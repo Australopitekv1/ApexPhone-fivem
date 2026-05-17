@@ -1,0 +1,770 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>ApexPhone</title>
+  <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════
+     Phone Shell
+════════════════════════════════════════════════════ -->
+<div id="phone-container" class="hidden">
+
+  <!-- Dynamic Island -->
+  <div id="dynamic-island" class="di-idle">
+    <div id="di-content"></div>
+  </div>
+
+  <!-- Status Bar -->
+  <div id="status-bar">
+    <span id="sb-time">00:00</span>
+    <div id="sb-icons">
+      <span id="sb-signal" class="icon-signal s3">▌▌▌</span>
+      <span id="sb-wifi"   class="icon-wifi">&#x1F4F6;</span>
+      <span id="sb-battery" class="icon-battery">
+        <span id="sb-bat-fill" style="width:80%"></span>
+      </span>
+    </div>
+  </div>
+
+  <!-- ── Lock Screen ──────────────────────────────── -->
+  <div id="screen-lock" class="screen active">
+    <div id="lock-wallpaper"></div>
+    <div id="lock-time-block">
+      <div id="lock-time">00:00</div>
+      <div id="lock-date">Monday, 1 January</div>
+    </div>
+    <div id="lock-actions">
+      <button id="btn-fingerprint" onclick="Auth.startFingerprint()">
+        <svg viewBox="0 0 24 24"><path d="M12 1C6.5 1 2 5.5 2 11c0 2.4.9 4.6 2.3 6.3L12 23l7.7-5.7C21.1 15.6 22 13.4 22 11c0-5.5-4.5-10-10-10zm0 2c4.4 0 8 3.6 8 8 0 1.9-.7 3.7-1.8 5.1L12 20.4l-6.2-4.3C4.7 14.7 4 12.9 4 11c0-4.4 3.6-8 8-8z"/></svg>
+        <span>Touch ID</span>
+      </button>
+      <button id="btn-pin" onclick="Auth.showPIN()">Enter PIN</button>
+    </div>
+
+    <!-- Fingerprint animation overlay -->
+    <div id="fp-overlay" class="hidden">
+      <div id="fp-ring"></div>
+      <div id="fp-icon">&#x1F4F1;</div>
+      <div id="fp-status">Scanning...</div>
+    </div>
+
+    <!-- PIN pad -->
+    <div id="pin-pad" class="hidden">
+      <div id="pin-dots">
+        <span class="dot"></span><span class="dot"></span>
+        <span class="dot"></span><span class="dot"></span>
+      </div>
+      <div id="pin-error" class="hidden"></div>
+      <div id="numpad">
+        <button onclick="Auth.pinKey(1)">1</button>
+        <button onclick="Auth.pinKey(2)">2</button>
+        <button onclick="Auth.pinKey(3)">3</button>
+        <button onclick="Auth.pinKey(4)">4</button>
+        <button onclick="Auth.pinKey(5)">5</button>
+        <button onclick="Auth.pinKey(6)">6</button>
+        <button onclick="Auth.pinKey(7)">7</button>
+        <button onclick="Auth.pinKey(8)">8</button>
+        <button onclick="Auth.pinKey(9)">9</button>
+        <button onclick="Auth.pinKey('C')">⌫</button>
+        <button onclick="Auth.pinKey(0)">0</button>
+        <button onclick="Auth.pinKey('OK')">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Home Screen ──────────────────────────────── -->
+  <div id="screen-home" class="screen hidden">
+    <div id="home-wallpaper"></div>
+
+    <!-- Notification badges, widgets -->
+    <div id="home-widgets">
+      <div class="widget widget-clock">
+        <div id="widget-time">00:00</div>
+        <div id="widget-date">Mon 1 Jan</div>
+      </div>
+      <div class="widget widget-weather">
+        <span>&#9728;</span> 23°C  Los Santos
+      </div>
+    </div>
+
+    <!-- App Grid -->
+    <div id="app-grid">
+      <!-- Row 1 -->
+      <div class="app-icon" data-app="phone"       onclick="App.open('phone')">
+        <div class="app-icon-img">📞</div><span>Phone</span>
+        <span class="badge hidden" id="badge-phone"></span>
+      </div>
+      <div class="app-icon" data-app="messages"    onclick="App.open('messages')">
+        <div class="app-icon-img">💬</div><span>Messages</span>
+        <span class="badge hidden" id="badge-messages"></span>
+      </div>
+      <div class="app-icon" data-app="contacts"    onclick="App.open('contacts')">
+        <div class="app-icon-img">👤</div><span>Contacts</span>
+      </div>
+      <div class="app-icon" data-app="camera"      onclick="App.open('camera')">
+        <div class="app-icon-img">📷</div><span>Camera</span>
+      </div>
+      <!-- Row 2 -->
+      <div class="app-icon" data-app="bank"        onclick="App.open('bank')">
+        <div class="app-icon-img">🏦</div><span>Bank</span>
+      </div>
+      <div class="app-icon" data-app="crypto"      onclick="App.open('crypto')">
+        <div class="app-icon-img">₿</div><span>Crypto</span>
+      </div>
+      <div class="app-icon" data-app="marketplace" onclick="App.open('marketplace')">
+        <div class="app-icon-img">🛒</div><span>Market</span>
+      </div>
+      <div class="app-icon" data-app="email"       onclick="App.open('email')">
+        <div class="app-icon-img">✉️</div><span>Email</span>
+        <span class="badge hidden" id="badge-email"></span>
+      </div>
+      <!-- Row 3 -->
+      <div class="app-icon" data-app="catiter"     onclick="App.open('catiter')">
+        <div class="app-icon-img cat-color">🐦</div><span>Catiter</span>
+      </div>
+      <div class="app-icon" data-app="instapic"    onclick="App.open('instapic')">
+        <div class="app-icon-img insta-color">📸</div><span>InstaPic</span>
+      </div>
+      <div class="app-icon" data-app="tiktok"      onclick="App.open('tiktok')">
+        <div class="app-icon-img tik-color">🎵</div><span>TikTrend</span>
+      </div>
+      <div class="app-icon" data-app="flirtdate"   onclick="App.open('flirtdate')">
+        <div class="app-icon-img flirt-color">❤️</div><span>FlirtDate</span>
+      </div>
+      <!-- Row 4 -->
+      <div class="app-icon" data-app="gps"         onclick="App.open('gps')">
+        <div class="app-icon-img">🗺️</div><span>GPS</span>
+      </div>
+      <div class="app-icon" data-app="garage"      onclick="App.open('garage')">
+        <div class="app-icon-img">🚗</div><span>Garage</span>
+      </div>
+      <div class="app-icon" data-app="gallery"     onclick="App.open('gallery')">
+        <div class="app-icon-img">🖼️</div><span>Gallery</span>
+      </div>
+      <div class="app-icon" data-app="music"       onclick="App.open('music')">
+        <div class="app-icon-img">🎧</div><span>Music</span>
+      </div>
+      <!-- Row 5 -->
+      <div class="app-icon" data-app="taxi"        onclick="App.open('taxi')">
+        <div class="app-icon-img">🚕</div><span>RideX</span>
+      </div>
+      <div class="app-icon" data-app="darkweb"     onclick="App.open('darkweb')" id="app-darkweb">
+        <div class="app-icon-img dark-color">🌐</div><span>TorBrowser</span>
+      </div>
+      <div class="app-icon" data-app="mdt"         onclick="App.open('mdt')" id="app-mdt">
+        <div class="app-icon-img mdt-color">🔵</div><span>MDT</span>
+      </div>
+      <div class="app-icon" data-app="settings"    onclick="App.open('settings')">
+        <div class="app-icon-img">⚙️</div><span>Settings</span>
+      </div>
+    </div>
+
+    <!-- Dock -->
+    <div id="dock">
+      <div class="dock-item" onclick="App.open('phone')">📞</div>
+      <div class="dock-item" onclick="App.open('messages')">💬</div>
+      <div class="dock-item" onclick="App.open('bank')">🏦</div>
+      <div class="dock-item" onclick="App.open('settings')">⚙️</div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════
+       App Screens  (SPA — only one visible at a time)
+  ══════════════════════════════════════════════════ -->
+
+  <!-- ── Phone / Calls ──────────────────────────── -->
+  <div id="app-phone" class="app-screen hidden">
+    <div class="app-header">
+      <button class="btn-back" onclick="App.back()">‹</button>
+      <h2>Phone</h2>
+    </div>
+    <div class="app-tabs">
+      <button class="tab-btn active" onclick="Phone.tab('keypad')">Keypad</button>
+      <button class="tab-btn" onclick="Phone.tab('recent')">Recent</button>
+    </div>
+    <div id="phone-keypad" class="tab-content active">
+      <div id="dial-number"></div>
+      <div id="dialpad">
+        <button onclick="Phone.dial('1')">1</button>
+        <button onclick="Phone.dial('2')">2<sub>ABC</sub></button>
+        <button onclick="Phone.dial('3')">3<sub>DEF</sub></button>
+        <button onclick="Phone.dial('4')">4<sub>GHI</sub></button>
+        <button onclick="Phone.dial('5')">5<sub>JKL</sub></button>
+        <button onclick="Phone.dial('6')">6<sub>MNO</sub></button>
+        <button onclick="Phone.dial('7')">7<sub>PQRS</sub></button>
+        <button onclick="Phone.dial('8')">8<sub>TUV</sub></button>
+        <button onclick="Phone.dial('9')">9<sub>WXYZ</sub></button>
+        <button onclick="Phone.dial('*')">*</button>
+        <button onclick="Phone.dial('0')">0</button>
+        <button onclick="Phone.dialBack()">⌫</button>
+      </div>
+      <button id="btn-call-dial" class="btn-call-green" onclick="Phone.call()">📞</button>
+    </div>
+    <div id="phone-recent" class="tab-content hidden">
+      <ul id="call-history-list"></ul>
+    </div>
+  </div>
+
+  <!-- Incoming call overlay -->
+  <div id="incoming-call-overlay" class="hidden">
+    <div id="ic-avatar">👤</div>
+    <div id="ic-name"></div>
+    <div id="ic-number"></div>
+    <div id="ic-actions">
+      <button class="btn-decline" onclick="Phone.decline()">✖</button>
+      <button class="btn-call-green" onclick="Phone.answer()">📞</button>
+    </div>
+  </div>
+
+  <!-- Active call overlay -->
+  <div id="active-call-overlay" class="hidden">
+    <div id="ac-name"></div>
+    <div id="ac-number"></div>
+    <div id="ac-timer">00:00</div>
+    <div id="ac-actions">
+      <button id="btn-speaker" onclick="Phone.toggleSpeaker()">🔊</button>
+      <button class="btn-decline" onclick="Phone.hangup()">✖</button>
+    </div>
+  </div>
+
+  <!-- ── Messages ──────────────────────────────── -->
+  <div id="app-messages" class="app-screen hidden">
+    <div class="app-header">
+      <button class="btn-back" onclick="App.back()">‹</button>
+      <h2>Messages</h2>
+      <button class="btn-compose" onclick="Messages.compose()">✏️</button>
+    </div>
+    <div id="thread-list"></div>
+
+    <!-- Thread view (single conversation) -->
+    <div id="thread-view" class="hidden">
+      <div class="app-header">
+        <button class="btn-back" onclick="Messages.closeThread()">‹</button>
+        <h2 id="thread-contact-name"></h2>
+        <button onclick="Messages.shareLocation()">📍</button>
+      </div>
+      <div id="thread-messages"></div>
+      <div id="thread-input-bar">
+        <button onclick="Messages.attachImage()">📎</button>
+        <input type="text" id="msg-input" placeholder="Message…" maxlength="500"/>
+        <button onclick="Messages.send()">▶</button>
+      </div>
+    </div>
+
+    <!-- Compose new message -->
+    <div id="compose-view" class="hidden">
+      <div class="app-header">
+        <button class="btn-back" onclick="Messages.closeCompose()">‹</button>
+        <h2>New Message</h2>
+      </div>
+      <input type="text" id="compose-to" placeholder="Number or name…"/>
+      <textarea id="compose-body" placeholder="Message…" maxlength="500"></textarea>
+      <button onclick="Messages.sendCompose()">Send</button>
+    </div>
+  </div>
+
+  <!-- ── Contacts ──────────────────────────────── -->
+  <div id="app-contacts" class="app-screen hidden">
+    <div class="app-header">
+      <button class="btn-back" onclick="App.back()">‹</button>
+      <h2>Contacts</h2>
+      <button onclick="Contacts.showAdd()">+</button>
+    </div>
+    <input type="text" id="contacts-search" placeholder="Search…" oninput="Contacts.filter(this.value)"/>
+    <ul id="contacts-list"></ul>
+
+    <div id="add-contact-view" class="hidden">
+      <div class="app-header">
+        <button class="btn-back" onclick="Contacts.hideAdd()">‹</button>
+        <h2>New Contact</h2>
+      </div>
+      <input type="text" id="new-contact-name"   placeholder="Name"/>
+      <input type="text" id="new-contact-number" placeholder="Number"/>
+      <button onclick="Contacts.save()">Save</button>
+    </div>
+  </div>
+
+  <!-- ── Bank ──────────────────────────────────── -->
+  <div id="app-bank" class="app-screen hidden">
+    <div class="app-header">
+      <button class="btn-back" onclick="App.back()">‹</button>
+      <h2>Banking</h2>
+    </div>
+    <div id="bank-balance-card">
+      <div class="balance-label">Bank Balance</div>
+      <div id="bank-balance" class="balance-amount">$0</div>
+      <div class="balance-label">Cash</div>
+      <div id="bank-cash" class="balance-amount cash">$0</div>
+    </div>
+    <div class="bank-actions">
+      <button onclick="Bank.showTransfer()">Transfer</button>
+      <button onclick="Bank.showHistory()">History</button>
+      <button onclick="Bank.showInvoices()">Invoices</button>
+    </div>
+    <div id="bank-transfer-panel" class="hidden">
+      <input type="text"   id="transfer-target" placeholder="Number / Citizen ID"/>
+      <input type="number" id="transfer-amount" placeholder="Amount" min="1"/>
+      <input type="text"   id="transfer-note"   placeholder="Note (optional)"/>
+      <button onclick="Bank.transfer()">Send Money</button>
+    </div>
+    <div id="bank-history-panel" class="hidden">
+      <ul id="bank-history-list"></ul>
+    </div>
+    <div id="bank-invoices-panel" class="hidden">
+      <ul id="invoices-list"></ul>
+    </div>
+  </div>
+
+  <!-- ── Crypto ─────────────────────────────────── -->
+  <div id="app-crypto" class="app-screen hidden">
+    <div class="app-header">
+      <button class="btn-back" onclick="App.back()">‹</button>
+      <h2>CryptoX</h2>
+    </div>
+    <div id="crypto-portfolio"></div>
+    <div id="crypto-market"></div>
+    <div id="crypto-trade-panel" class="hidden">
+      <h3 id="crypto-trade-coin"></h3>
+      <input type="number" id="crypto-trade-amount" placeholder="Amount" min="0.01" step="0.01"/>
+      <div class="trade-buttons">
+        <button class="btn-buy"  onclick="Crypto.buy()">Buy</button>
+        <button class="btn-sell" onclick="Crypto.sell()">Sell</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Gallery ────────────────────────────────── -->
+  <div id="app-gallery" class="app-screen hidden">
+    <div class="app-header">
+      <button class="btn-back" onclick="App.back()">‹</button>
+      <h2>Gallery</h2>
+    </div>
+    <div id="gallery-grid"></div>
+    <div id="photo-viewer" class="hidden">
+      <button class="btn-back" onclick="Gallery.closeViewer()">‹</button>
+      <img id="photo-viewer-img" src="" alt=""/>
+      <div id="photo-viewer-caption"></div>
+      <div class="photo-actions">
+        <button onclick="Gallery.share()">Share</button>
+        <button onclick="Gallery.delete()">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Camera ────────────────────────────────── -->
+  <div id="app-camera" class="app-screen hidden">
+    <div class="app-header">
+      <button class="btn-back" onclick="App.back()">‹</button>
+      <h2>Camera</h2>
+    </div>
+    <div id="camera-viewport">
+      <canvas id="camera-canvas"></canvas>
+      <div id="camera-flash"></div>
+    </div>
+    <div id="camera-controls">
+      <button onclick="Camera.switch()">🔄</button>
+      <button id="btn-shutter" onclick="Camera.shoot()">⬤</button>
+      <button onclick="App.open('gallery')">🖼️</button>
+    </div>
+  </div>
+
+  <!-- ── GPS ───────────────────────────────────── -->
+  <div id="app-gps" class="app-screen hidden">
+    <div class="app-header">
+      <button class="btn-back" onclick="App.back()">‹</button>
+      <h2>GPS & Navigation</h2>
+    </div>
+    <div id="gps-map-placeholder">
+      <div id="gps-blip">◉</div>
+    </div>
+    <div id="gps-panel">
+      <button onclick="GPS.shareLocation()">📍 Share Location</button>
+      <button onclick="GPS.stopShare()">✋ Stop Sharing</button>
+      <hr/>
+      <h4>Live Locations</h4>
+      <ul id="gps-live-list"></ul>
+      <hr/>
+      <h4>Trackers</h4>
+      <ul id="gps-trackers-list"></ul>
+    </div>
+  </div>
+
+  <!-- ── Garage ────────────────────────────────── -->
+  <div id="app-garage" class="app-screen hidden">
+    <div class="app-header">
+      <button class="btn-back" onclick="App.back()">‹</button>
+      <h2>My Garage</h2>
+    </div>
+    <ul id="garage-list"></ul>
+  </div>
+
+  <!-- ── Marketplace ───────────────────────────── -->
+  <div id="app-marketplace" class="app-screen hidden">
+    <div class="app-header">
+      <button class="btn-back" onclick="App.back()">‹</button>
+      <h2>Marketplace</h2>
+      <button onclick="Market.showCreate()">+</button>
+    </div>
+    <div id="market-filters">
+      <select id="market-cat" onchange="Market.filter()">
+        <option value="">All Categories</option>
+        <option>Vehicles</option><option>Electronics</option>
+        <option>Weapons</option><option>Clothing</option>
+        <option>Real Estate</option><option>Other</option>
+      </select>
+    </div>
+    <div id="market-grid"></div>
+    <div id="market-create-panel" class="hidden">
+      <div class="app-header">
+        <button class="btn-back" onclick="Market.hideCreate()">‹</button>
+        <h2>New Listing</h2>
+      </div>
+      <input type="text"   id="market-title"  placeholder="Title"/>
+      <textarea id="market-desc"  placeholder="Description"></textarea>
+      <input type="number" id="market-price"  placeholder="Price" min="1"/>
+      <select id="market-category">
+        <option>Vehicles</option><option>Electronics</option>
+        <option>Weapons</option><option>Clothing</option>
+        <option>Real Estate</option><option>Other</option>
+      </select>
+      <button onclick="Market.create()">Post Listing</button>
+    </div>
+  </div>
+
+  <!-- ── Email ─────────────────────────────────── -->
+  <div id="app-email" class="app-screen hidden">
+    <div class="app-header">
+      <button class="btn-back" onclick="App.back()">‹</button>
+      <h2>Email</h2>
+      <button onclick="Email.compose()">✏️</button>
+    </div>
+    <ul id="email-list"></ul>
+    <div id="email-compose-view" class="hidden">
+      <div class="app-header">
+        <button class="btn-back" onclick="Email.closeCompose()">‹</button>
+        <h2>New Email</h2>
+      </div>
+      <input type="text" id="email-to"      placeholder="To (number)"/>
+      <input type="text" id="email-subject" placeholder="Subject"/>
+      <textarea id="email-body" placeholder="Body…" rows="8"></textarea>
+      <button onclick="Email.send()">Send</button>
+    </div>
+    <div id="email-read-view" class="hidden">
+      <div class="app-header">
+        <button class="btn-back" onclick="Email.closeRead()">‹</button>
+        <h2 id="email-read-subject"></h2>
+      </div>
+      <div id="email-read-from"></div>
+      <div id="email-read-body"></div>
+    </div>
+  </div>
+
+  <!-- ── Catiter (Twitter) ─────────────────────── -->
+  <div id="app-catiter" class="app-screen hidden">
+    <div class="app-header">
+      <button class="btn-back" onclick="App.back()">‹</button>
+      <h2>🐦 Catiter</h2>
+      <button onclick="Catiter.compose()">✏️</button>
+    </div>
+    <div id="catiter-feed"></div>
+    <div id="catiter-compose" class="hidden">
+      <textarea id="catiter-text" maxlength="280" placeholder="What's happening?"></textarea>
+      <div id="catiter-char-count">280</div>
+      <button onclick="Catiter.post()">Post</button>
+    </div>
+  </div>
+
+  <!-- ── InstaPic ───────────────────────────────── -->
+  <div id="app-instapic" class="app-screen hidden">
+    <div class="app-header">
+      <button class="btn-back" onclick="App.back()">‹</button>
+      <h2>📸 InstaPic</h2>
+      <button onclick="InstaPic.compose()">+</button>
+    </div>
+    <div id="instapic-feed"></div>
+    <div id="instapic-compose" class="hidden">
+      <div class="app-header">
+        <button class="btn-back" onclick="InstaPic.closeCompose()">‹</button>
+        <h2>New Post</h2>
+      </div>
+      <div id="instapic-preview" class="hidden"><img id="instapic-preview-img" src="" alt=""/></div>
+      <button onclick="InstaPic.pickPhoto()">Choose Photo</button>
+      <textarea id="instapic-caption" placeholder="Caption…" maxlength="300"></textarea>
+      <button onclick="InstaPic.post()">Share</button>
+    </div>
+  </div>
+
+  <!-- ── TikTrend ───────────────────────────────── -->
+  <div id="app-tiktok" class="app-screen hidden">
+    <div class="app-header">
+      <button class="btn-back" onclick="App.back()">‹</button>
+      <h2>🎵 TikTrend</h2>
+    </div>
+    <div id="tiktok-feed"></div>
+  </div>
+
+  <!-- ── FlirtDate ─────────────────────────────── -->
+  <div id="app-flirtdate" class="app-screen hidden">
+    <div class="app-header">
+      <button class="btn-back" onclick="App.back()">‹</button>
+      <h2>❤️ FlirtDate</h2>
+    </div>
+    <div id="flirt-stack">
+      <div id="flirt-card">
+        <div id="flirt-photo"></div>
+        <div id="flirt-name"></div>
+        <div id="flirt-bio"></div>
+      </div>
+    </div>
+    <div id="flirt-actions">
+      <button class="flirt-nope"  onclick="FlirtDate.nope()">✖</button>
+      <button class="flirt-super" onclick="FlirtDate.superLike()">⭐</button>
+      <button class="flirt-like"  onclick="FlirtDate.like()">♥</button>
+    </div>
+  </div>
+
+  <!-- ── Dark Web ───────────────────────────────── -->
+  <div id="app-darkweb" class="app-screen hidden">
+    <div class="app-header dark-header">
+      <button class="btn-back" onclick="App.back()">‹</button>
+      <h2>🌐 TorBrowser</h2>
+    </div>
+    <div class="app-tabs">
+      <button class="tab-btn active" onclick="DarkWeb.tab('market')">Black Market</button>
+      <button class="tab-btn" onclick="DarkWeb.tab('chat')">Dark Chat</button>
+      <button class="tab-btn" onclick="DarkWeb.tab('imei')">IMEI Hack</button>
+    </div>
+    <div id="dw-market" class="tab-content active">
+      <button onclick="DarkWeb.showSell()">📦 List Item</button>
+      <div id="dark-market-list"></div>
+    </div>
+    <div id="dw-chat" class="tab-content hidden">
+      <div id="dark-chat-messages"></div>
+      <div id="dark-chat-input-bar">
+        <input type="text" id="dark-chat-to"  placeholder="Anon ID (e.g. anon_abc123)"/>
+        <input type="text" id="dark-chat-msg" placeholder="Encrypted message…"/>
+        <button onclick="DarkWeb.sendChat()">▶</button>
+      </div>
+    </div>
+    <div id="dw-imei" class="tab-content hidden">
+      <div id="imei-clone-info">
+        <p>Clone your IMEI to remove police flags.</p>
+        <p id="imei-current-display"></p>
+        <button onclick="DarkWeb.startIMEIClone()">Start IMEI Clone ($2500)</button>
+      </div>
+      <div id="imei-minigame" class="hidden">
+        <p>Crack the encryption key:</p>
+        <div id="imei-keypad-display"></div>
+        <div id="imei-numpad"></div>
+        <div id="imei-timer-bar"><div id="imei-timer-fill"></div></div>
+      </div>
+    </div>
+    <div id="dw-sell-panel" class="hidden">
+      <div class="app-header">
+        <button class="btn-back" onclick="DarkWeb.hideSell()">‹</button>
+        <h2>List Item</h2>
+      </div>
+      <select id="dw-item-select"></select>
+      <input type="number" id="dw-item-price" placeholder="Price (cash)" min="1"/>
+      <button onclick="DarkWeb.sell()">List</button>
+    </div>
+  </div>
+
+  <!-- ── MDT ───────────────────────────────────── -->
+  <div id="app-mdt" class="app-screen hidden">
+    <div class="app-header">
+      <button class="btn-back" onclick="App.back()">‹</button>
+      <h2>🔵 MDT — Police Terminal</h2>
+    </div>
+    <div id="mdt-no-access" class="hidden">
+      <p>Access Denied. Police personnel only.</p>
+    </div>
+    <div id="mdt-panel">
+      <div class="app-tabs">
+        <button class="tab-btn active" onclick="MDT.tab('imei')">IMEI Lookup</button>
+        <button class="tab-btn" onclick="MDT.tab('persons')">Persons</button>
+        <button class="tab-btn" onclick="MDT.tab('dispatch')">Dispatch</button>
+      </div>
+      <div id="mdt-imei" class="tab-content active">
+        <input type="text" id="mdt-imei-input" placeholder="Enter IMEI…" maxlength="15"/>
+        <button onclick="MDT.lookupIMEI()">Search</button>
+        <div id="mdt-imei-result"></div>
+      </div>
+      <div id="mdt-persons" class="tab-content hidden">
+        <input type="text" id="mdt-person-input" placeholder="Name or Citizen ID…"/>
+        <button onclick="MDT.lookupPerson()">Search</button>
+        <div id="mdt-person-result"></div>
+      </div>
+      <div id="mdt-dispatch" class="tab-content hidden">
+        <div id="mdt-dispatch-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Taxi / RideX ──────────────────────────── -->
+  <div id="app-taxi" class="app-screen hidden">
+    <div class="app-header">
+      <button class="btn-back" onclick="App.back()">‹</button>
+      <h2>🚕 RideX</h2>
+    </div>
+    <div id="taxi-panel">
+      <p>Where to?</p>
+      <input type="text" id="taxi-dest" placeholder="Destination (optional note)"/>
+      <button onclick="Taxi.request()">Request Ride</button>
+      <hr/>
+      <h4>Driver Mode</h4>
+      <p>Open ride requests:</p>
+      <ul id="taxi-requests-list"></ul>
+    </div>
+  </div>
+
+  <!-- ── Music Player ──────────────────────────── -->
+  <div id="app-music" class="app-screen hidden">
+    <div class="app-header">
+      <button class="btn-back" onclick="App.back()">‹</button>
+      <h2>🎧 Music</h2>
+    </div>
+    <div id="music-player">
+      <div id="music-art">🎵</div>
+      <div id="music-title">No track selected</div>
+      <div id="music-artist"></div>
+      <div id="music-progress-bar"><div id="music-progress-fill"></div></div>
+      <div id="music-controls">
+        <button onclick="Music.prev()">⏮</button>
+        <button id="btn-play-pause" onclick="Music.togglePlay()">▶</button>
+        <button onclick="Music.next()">⏭</button>
+      </div>
+    </div>
+    <ul id="music-playlist"></ul>
+  </div>
+
+  <!-- ── Settings ──────────────────────────────── -->
+  <div id="app-settings" class="app-screen hidden">
+    <div class="app-header">
+      <button class="btn-back" onclick="App.back()">‹</button>
+      <h2>⚙️ Settings</h2>
+    </div>
+    <div class="settings-list">
+
+      <div class="settings-section">
+        <h4>Device</h4>
+        <div class="settings-row" id="settings-imei-row">
+          <span>IMEI</span><span id="settings-imei-val">—</span>
+        </div>
+        <div class="settings-row" id="settings-serial-row">
+          <span>Serial</span><span id="settings-serial-val">—</span>
+        </div>
+        <div class="settings-row" id="settings-number-row">
+          <span>Phone Number</span><span id="settings-number-val">—</span>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <h4>Appearance</h4>
+        <div class="settings-row">
+          <span>Theme</span>
+          <select id="s-theme" onchange="Settings.applyTheme(this.value)">
+            <option value="dark">Dark</option>
+            <option value="light">Light</option>
+          </select>
+        </div>
+        <div class="settings-row">
+          <span>Wallpaper</span>
+          <select id="s-wallpaper" onchange="Settings.applyWallpaper(this.value)">
+            <option value="default">Default</option>
+            <option value="city">City Night</option>
+            <option value="mountain">Mountain</option>
+            <option value="beach">Beach</option>
+          </select>
+        </div>
+        <div class="settings-row">
+          <span>Ringtone</span>
+          <select id="s-ringtone">
+            <option value="default">Default</option>
+            <option value="classic">Classic</option>
+            <option value="vibrate">Vibrate Only</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <h4>Security</h4>
+        <div class="settings-row">
+          <span>Set PIN</span>
+          <input type="password" id="s-pin" maxlength="6" placeholder="4–6 digits" style="width:80px"/>
+        </div>
+        <div class="settings-row">
+          <span>Duress PIN</span>
+          <input type="password" id="s-duress-pin" maxlength="6" placeholder="Different PIN" style="width:80px"/>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <h4>Connectivity</h4>
+        <div class="settings-row">
+          <span>Airplane Mode</span>
+          <label class="toggle">
+            <input type="checkbox" id="s-airplane" onchange="Settings.toggleAirplane(this.checked)"/>
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="settings-row">
+          <span>Dynamic Island</span>
+          <label class="toggle">
+            <input type="checkbox" id="s-di" checked/>
+            <span class="slider"></span>
+          </label>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <h4>Remote Security</h4>
+        <div class="settings-row">
+          <span>Remote Lock</span>
+          <input type="text" id="s-remote-number" placeholder="Target number" style="width:120px"/>
+          <button onclick="Settings.remoteLock()">Lock</button>
+        </div>
+        <div class="settings-row">
+          <span>Find My Phone</span>
+          <button onclick="Settings.findMyPhone()">Locate</button>
+        </div>
+        <div class="settings-row">
+          <span>Cloud Backup</span>
+          <button onclick="Settings.cloudBackup()">Backup</button>
+          <button onclick="Settings.cloudRestore()">Restore</button>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <h4>Data Transfer</h4>
+        <button onclick="Settings.dataTransfer()">Transfer to Nearby Phone</button>
+      </div>
+
+      <div class="settings-section">
+        <button class="btn-save-settings" onclick="Settings.save()">Save Settings</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Navigation Bar ─────────────────────────── -->
+  <div id="nav-bar">
+    <button onclick="App.home()">⬜</button>
+    <button onclick="App.back()">‹</button>
+    <button onclick="App.home()">⌂</button>
+  </div>
+
+  <!-- ── Toast Notifications Container ─────────── -->
+  <div id="toast-container"></div>
+
+  <!-- ── Cracked Screen Overlay ────────────────── -->
+  <div id="cracked-overlay" class="hidden"></div>
+
+</div><!-- #phone-container -->
+
+<script src="app.js"></script>
+</body>
+</html>
