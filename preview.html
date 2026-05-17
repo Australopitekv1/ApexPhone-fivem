@@ -242,11 +242,21 @@ h1{font-size:28px;font-weight:700;margin-bottom:6px;
 
 /* ── APP SCREENS ─────────────────────────────────────── */
 .app-screen{
-  position:absolute;inset:0;background:var(--bg0);
+  position:absolute;
+  top:0;left:0;right:0;
+  /* leave room for nav bar (62px) */
+  bottom:62px;
+  background:var(--bg0);
   display:flex;flex-direction:column;overflow:hidden;
+  z-index:20;
   transition:transform .28s cubic-bezier(.4,0,.2,1),opacity .28s;
 }
-.app-screen.hidden{opacity:0;transform:translateX(100%);pointer-events:none}
+.app-screen.hidden{
+  opacity:0;
+  transform:translateX(105%);
+  pointer-events:none;
+  z-index:-1;
+}
 
 .app-hdr{
   display:flex;align-items:center;padding:52px 16px 13px;
@@ -418,7 +428,7 @@ h1{font-size:28px;font-weight:700;margin-bottom:6px;
 .pa-like-count{font-size:12px}
 
 /* ── DARK WEB ────────────────────────────────────────── */
-.dw-bg{background:#050505}
+.dw-bg{background:#050505!important}
 .dw-hdr h2{color:#39ff14!important;font-family:'Courier New',monospace}
 .dw-item{
   background:#0a0a0a;border:1px solid #222;border-radius:var(--rs);
@@ -463,10 +473,11 @@ h1{font-size:28px;font-weight:700;margin-bottom:6px;
 }
 
 /* ── SETTINGS ────────────────────────────────────────── */
-.set-list{flex:1;overflow-y:auto;padding-bottom:20px}
+.set-list{flex:1;overflow-y:auto;padding-bottom:20px;background:var(--bg0)}
+.set-sec{background:var(--bg0)}
 .set-sec h4{
   font-size:12px;color:var(--t2);text-transform:uppercase;
-  letter-spacing:1px;padding:16px 16px 8px;
+  letter-spacing:1px;padding:16px 16px 8px;background:var(--bg0);
 }
 .set-row{
   display:flex;align-items:center;justify-content:space-between;
@@ -501,7 +512,8 @@ h1{font-size:28px;font-weight:700;margin-bottom:6px;
 #nav{
   flex-shrink:0;display:flex;justify-content:space-around;align-items:center;
   padding:6px 0 18px;background:var(--bg0);border-top:1px solid var(--bdr);
-  position:relative;z-index:10;
+  position:absolute;bottom:0;left:0;right:0;
+  z-index:25;
 }
 #nav button{
   background:none;border:none;color:var(--t2);font-size:20px;cursor:pointer;
@@ -1308,21 +1320,37 @@ setInterval(tick,1000); tick();
 let currentApp = null;
 
 function showScreen(name) {
-  document.querySelectorAll('.screen').forEach(s=>{ s.classList.remove('on'); s.classList.add('off'); });
+  // Hide all app screens
   document.querySelectorAll('.app-screen').forEach(s=>s.classList.add('hidden'));
+  currentApp = null;
+
+  // Switch base screen
+  document.querySelectorAll('.screen').forEach(s=>{ s.classList.remove('on'); s.classList.add('off'); });
   const el = document.getElementById(`scr-${name}`);
   if(el){ el.classList.remove('off'); el.classList.add('on'); }
-  currentApp = null;
+
+  // Nav bar only visible on home/app screens
+  const nav = document.getElementById('nav');
+  nav.style.display = (name === 'home') ? 'flex' : 'none';
+
   updatePgBtn(name);
 }
 
 function showApp(name) {
+  // Ensure home screen is the base (visible below)
   document.querySelectorAll('.screen').forEach(s=>{ s.classList.remove('on'); s.classList.add('off'); });
-  document.querySelectorAll('.app-screen').forEach(s=>s.classList.add('hidden'));
   const home = document.getElementById('scr-home');
   home.classList.remove('off'); home.classList.add('on');
+
+  // Hide all app screens
+  document.querySelectorAll('.app-screen').forEach(s=>s.classList.add('hidden'));
+
+  // Show requested app — z-index:20 fully covers home grid
   const app = document.getElementById(`app-${name}`);
   if(app){ app.classList.remove('hidden'); currentApp=name; }
+
+  // Show nav bar
+  document.getElementById('nav').style.display = 'flex';
   updatePgBtn(name);
 }
 
@@ -1332,6 +1360,8 @@ function closeApp() {
     if(app) app.classList.add('hidden');
     currentApp=null;
   }
+  // nav stays visible on home
+  document.getElementById('nav').style.display = 'flex';
   updatePgBtn('home');
 }
 
@@ -1357,10 +1387,15 @@ function switchTab(appId, paneId, btn) {
 // ── Lock ──────────────────────────────────────────────────────
 function unlockPhone() {
   const fp=document.createElement('div');
-  fp.style.cssText='position:absolute;inset:0;background:rgba(0,0,0,.7);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;z-index:200';
+  fp.style.cssText='position:absolute;inset:0;background:rgba(0,0,0,.7);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;z-index:200;border-radius:52px';
   fp.innerHTML=`<div style="width:80px;height:80px;border:3px solid #3a86ff;border-radius:50%;animation:fpScan 1.5s ease-in-out 2;display:flex;align-items:center;justify-content:center;font-size:32px">👆</div><div style="color:#3a86ff;font-size:14px">Skanowanie…</div>`;
   document.getElementById('scr-lock').appendChild(fp);
-  setTimeout(()=>{ fp.remove(); showScreen('home'); island('🔓 Odblokowany',false); },1600);
+  setTimeout(()=>{
+    fp.remove();
+    showScreen('home');
+    document.getElementById('nav').style.display='flex';
+    island('🔓 Odblokowany',false);
+  },1600);
 }
 
 // ── Dynamic Island ────────────────────────────────────────────
@@ -1612,7 +1647,8 @@ const style=document.createElement('style');
 style.textContent='@keyframes fpScan{0%{transform:scale(.8);opacity:1}50%{transform:scale(1.2);opacity:.5}100%{transform:scale(.8);opacity:1}}@keyframes tin{from{transform:translateY(-16px);opacity:0}to{transform:none;opacity:1}}';
 document.head.appendChild(style);
 
-// Init
+// Init — hide nav on lock screen
+document.getElementById('nav').style.display = 'none';
 showScreen('lock');
 </script>
 </body>
