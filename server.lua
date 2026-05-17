@@ -7,6 +7,105 @@
 local QBCore = exports['qb-core']:GetCoreObject()
 
 -- ──────────────────────────────────────────────────────────────
+--  F5: SHA-256 pure Lua (Lua 5.4 bitwise ops, 32-bit masking)
+-- ──────────────────────────────────────────────────────────────
+
+local SHA256_K = {
+    0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
+    0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
+    0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,
+    0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,
+    0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,
+    0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,
+    0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,
+    0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2,
+}
+
+local function rotr32(x, n) return ((x >> n) | (x << (32 - n))) & 0xFFFFFFFF end
+local function add32(...)
+    local s = 0
+    for _, v in ipairs({...}) do s = (s + v) & 0xFFFFFFFF end
+    return s
+end
+
+local function SHA256(msg)
+    local function byte(s, i) return s:byte(i) end
+    local len = #msg
+    -- Pre-processing
+    msg = msg .. '\128'
+    while #msg % 64 ~= 56 do msg = msg .. '\0' end
+    local bitlen = len * 8
+    for i = 7, 0, -1 do
+        msg = msg .. string.char((bitlen >> (i * 8)) & 0xFF)
+    end
+    -- Initial hash values
+    local h0,h1,h2,h3 = 0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a
+    local h4,h5,h6,h7 = 0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19
+    -- Process 512-bit chunks
+    for chunk = 0, #msg / 64 - 1 do
+        local w = {}
+        for i = 1, 16 do
+            local base = chunk * 64 + (i - 1) * 4 + 1
+            w[i] = (byte(msg,base) << 24) | (byte(msg,base+1) << 16) | (byte(msg,base+2) << 8) | byte(msg,base+3)
+            w[i] = w[i] & 0xFFFFFFFF
+        end
+        for i = 17, 64 do
+            local s0 = rotr32(w[i-15],7) ~ rotr32(w[i-15],18) ~ (w[i-15] >> 3)
+            local s1 = rotr32(w[i-2],17) ~ rotr32(w[i-2],19)  ~ (w[i-2]  >> 10)
+            w[i] = add32(w[i-16], s0, w[i-7], s1)
+        end
+        local a,b,c,d,e,f,g,h = h0,h1,h2,h3,h4,h5,h6,h7
+        for i = 1, 64 do
+            local S1  = rotr32(e,6) ~ rotr32(e,11) ~ rotr32(e,25)
+            local ch  = (e & f) ~ (~e & g)
+            local tmp1 = add32(h, S1, ch & 0xFFFFFFFF, SHA256_K[i], w[i])
+            local S0  = rotr32(a,2) ~ rotr32(a,13) ~ rotr32(a,22)
+            local maj = (a & b) ~ (a & c) ~ (b & c)
+            local tmp2 = add32(S0, maj & 0xFFFFFFFF)
+            h=g; g=f; f=e; e=add32(d,tmp1); d=c; c=b; b=a; a=add32(tmp1,tmp2)
+        end
+        h0=add32(h0,a); h1=add32(h1,b); h2=add32(h2,c); h3=add32(h3,d)
+        h4=add32(h4,e); h5=add32(h5,f); h6=add32(h6,g); h7=add32(h7,h)
+    end
+    return ('%08x%08x%08x%08x%08x%08x%08x%08x'):format(h0,h1,h2,h3,h4,h5,h6,h7)
+end
+
+--- Returns true when the stored value looks like a 64-char hex SHA-256 digest.
+local function IsHashedPIN(v) return v and #v == 64 and v:match('^%x+$') ~= nil end
+
+local function HashPIN(raw) return SHA256(tostring(raw)) end
+
+local function PINMatches(inputRaw, stored)
+    if not stored then return true end           -- no PIN set → always pass
+    if IsHashedPIN(stored) then
+        return SHA256(tostring(inputRaw)) == stored
+    end
+    return inputRaw == stored                    -- legacy plain-text migration path
+end
+
+-- ──────────────────────────────────────────────────────────────
+--  F8: number → source cache (O(1) lookup replacing O(n) scan)
+-- ──────────────────────────────────────────────────────────────
+
+local numberSourceCache = {}   -- phone_number → server_source
+
+AddEventHandler('QBCore:Server:PlayerLoaded', function(player)
+    local cid = player.PlayerData.citizenid
+    if not cid then return end
+    local rows = MySQL.query.await('SELECT `number` FROM `apexphone_sims` WHERE `citizenid` = ? AND `active` = 1 LIMIT 1', { cid })
+    if rows and rows[1] then
+        numberSourceCache[rows[1].number] = player.PlayerData.source
+    end
+end)
+
+AddEventHandler('playerDropped', function()
+    local src = source
+    for num, s in pairs(numberSourceCache) do
+        if s == src then numberSourceCache[num] = nil end
+    end
+end)
+
+-- ──────────────────────────────────────────────────────────────
 --  Bootstrap — create tables on first run
 -- ──────────────────────────────────────────────────────────────
 
@@ -19,8 +118,8 @@ local function BootstrapDB()
             `serial`      VARCHAR(20)  UNIQUE NOT NULL,
             `model`       VARCHAR(50)  NOT NULL,
             `owner`       VARCHAR(50)  NOT NULL,
-            `pin`         VARCHAR(10)  DEFAULT NULL,
-            `duress_pin`  VARCHAR(10)  DEFAULT NULL,
+            `pin`         VARCHAR(64)  DEFAULT NULL,
+            `duress_pin`  VARCHAR(64)  DEFAULT NULL,
             `battery`     FLOAT        DEFAULT 100,
             `locked`      TINYINT(1)   DEFAULT 0,
             `cracked`     TINYINT(1)   DEFAULT 0,
@@ -28,7 +127,8 @@ local function BootstrapDB()
             `theme`       VARCHAR(50)  DEFAULT 'dark',
             `wallpaper`   VARCHAR(100) DEFAULT 'default',
             `ringtone`    VARCHAR(100) DEFAULT 'default',
-            `metadata`    JSON         DEFAULT NULL,
+            `metadata`         JSON         DEFAULT NULL,
+            `hardware_modules` JSON         DEFAULT '{}',
             `created_at`  TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
             INDEX (`citizenid`), INDEX (`imei`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -341,17 +441,11 @@ local function GetPlayerNumber(citizenid)
     return rows and rows[1] and rows[1].number or nil
 end
 
---- Returns the source of an online player by their phone number.
+--- Returns the source of an online player by their phone number (O(1) cache).
 local function GetSourceByNumber(number)
-    local players = QBCore.Functions.GetPlayers()
-    for _, src in ipairs(players) do
-        local p = GetPlayer(src)
-        if p then
-            local cid = p.PlayerData.citizenid
-            local num = GetPlayerNumber(cid)
-            if num == number then return src end
-        end
-    end
+    local src = numberSourceCache[number]
+    if src and GetPlayer(src) then return src end
+    numberSourceCache[number] = nil   -- stale entry cleanup
     return nil
 end
 
@@ -421,6 +515,9 @@ RegisterNetEvent('apexphone:server:requestPhoneData', function()
     local sim = GetSimRecord(cid)
     local number = sim and sim[1] and sim[1].number or nil
 
+    -- F8: keep numberSourceCache fresh on every phone open
+    if number then numberSourceCache[number] = src end
+
     -- Only send lightweight initial data; apps lazy-load on demand
     TriggerClientEvent('apexphone:client:phoneData', src, {
         imei      = phone.imei,
@@ -433,8 +530,9 @@ RegisterNetEvent('apexphone:server:requestPhoneData', function()
         wallpaper = phone.wallpaper,
         ringtone  = phone.ringtone,
         number    = number,
-        hasPin    = phone.pin ~= nil,
-        metadata  = phone.metadata,
+        hasPin           = phone.pin ~= nil,
+        metadata         = phone.metadata,
+        hardwareModules  = phone.hardware_modules and json.decode(phone.hardware_modules) or {},
     })
 end)
 
@@ -539,8 +637,11 @@ RegisterNetEvent('apexphone:server:phoneClosed', function(battery)
     local src = source
     local cid = GetCitizenId(src)
     if not cid then return end
-    MySQL.query('UPDATE `apexphone_phones` SET `battery` = ? WHERE `citizenid` = ?',
-        { tonumber(battery) or 100, cid })
+    -- F4: clamp battery to valid range; reject spoofed values
+    local batt = math.max(0, math.min(100, tonumber(battery) or 100))
+    -- Only update the record that this player actually owns
+    MySQL.query('UPDATE `apexphone_phones` SET `battery` = ? WHERE `citizenid` = ? AND `owner` = ?',
+        { batt, cid, cid })
 end)
 
 -- ──────────────────────────────────────────────────────────────
@@ -583,8 +684,8 @@ RegisterNetEvent('apexphone:server:verifyPIN', function(pin)
     local phone  = phones and phones[1]
     if not phone then return end
 
-    -- Duress PIN check
-    if Config.Security.DuressPIN and phone.duress_pin and pin == phone.duress_pin then
+    -- Duress PIN check (F5: hash-aware comparison)
+    if Config.Security.DuressPIN and phone.duress_pin and PINMatches(pin, phone.duress_pin) then
         -- Wipe data and alert police
         MySQL.query('UPDATE `apexphone_phones` SET `pin` = NULL, `metadata` = NULL WHERE `citizenid` = ?', { cid })
         MySQL.query('DELETE FROM `apexphone_contacts` WHERE `citizenid` = ?', { cid })
@@ -598,7 +699,7 @@ RegisterNetEvent('apexphone:server:verifyPIN', function(pin)
         return
     end
 
-    local success = phone.pin == nil or pin == phone.pin
+    local success = PINMatches(pin, phone.pin)  -- F5: hash-aware comparison
     if success then
         pinLockouts[cid] = nil  -- reset lockout
     else
@@ -731,6 +832,9 @@ RegisterNetEvent('apexphone:server:sendMessage', function(data)
     end
 
     local toNumber = tostring(data.to)
+    -- F6: reject numbers with non-digit characters to prevent SQL-injection via threadId
+    if not toNumber:match('^%d+$') or not fromNumber:match('^%d+$') then return end
+    -- F7: server-side message length cap (defense-in-depth)
     local message  = tostring(data.message):sub(1, 500)
     local msgType  = data.type or 'sms'
     local threadId = fromNumber < toNumber and (fromNumber .. '_' .. toNumber) or (toNumber .. '_' .. fromNumber)
@@ -1630,11 +1734,11 @@ RegisterNetEvent('apexphone:server:saveSettings', function(data)
     end
     if data.pin then
         updates[#updates+1] = '`pin` = ?'
-        table.insert(params, data.pin:sub(1, 6))
+        table.insert(params, HashPIN(data.pin:sub(1, 6)))  -- F5: store hash
     end
     if data.duressPin then
         updates[#updates+1] = '`duress_pin` = ?'
-        table.insert(params, data.duressPin:sub(1, 6))
+        table.insert(params, HashPIN(data.duressPin:sub(1, 6)))  -- F5: store hash
     end
 
     if #updates == 0 then return end
@@ -1759,15 +1863,239 @@ function table.contains(t, val)
 end
 
 -- ──────────────────────────────────────────────────────────────
+--  N1: Powerbank consumable item
+-- ──────────────────────────────────────────────────────────────
+
+QBCore.Functions.CreateUseableItem(Config.Items.Powerbank or 'powerbank', function(src)
+    local p = GetPlayer(src)
+    if not p then return end
+    local cid = p.PlayerData.citizenid
+
+    local phones = GetPhoneRecord(cid)
+    local phone  = phones and phones[1]
+    if not phone then
+        TriggerClientEvent('apexphone:client:pushNotification', src, {
+            title = 'No Phone', message = 'You have no phone to charge.', type = 'error'
+        })
+        return
+    end
+
+    local oldBatt   = tonumber(phone.battery) or 0
+    local charge    = Config.Battery and Config.Battery.PowerbankCharge or 40
+    local newBatt   = math.min(100, oldBatt + charge)
+
+    MySQL.query('UPDATE `apexphone_phones` SET `battery` = ? WHERE `citizenid` = ? AND `owner` = ?',
+        { newBatt, cid, cid })
+
+    -- Remove the powerbank item from the player's inventory
+    p.Functions.RemoveItem(Config.Items.Powerbank or 'powerbank', 1)
+    TriggerClientEvent('inventory:client:ItemBox', src, QBCore.Shared.Items[Config.Items.Powerbank or 'powerbank'], 'remove')
+
+    TriggerClientEvent('apexphone:client:powerbank', src, newBatt)
+    TriggerClientEvent('apexphone:client:pushNotification', src, {
+        title   = 'Powerbank',
+        message = ('Charged phone to %d%%.'):format(math.floor(newBatt)),
+        type    = 'success',
+    })
+end)
+
+RegisterNetEvent('apexphone:server:usePowerbank', function()
+    -- Proxy: allows client to trigger the useable-item handler directly when phone is dead
+    local src = source
+    local p   = GetPlayer(src)
+    if not p then return end
+    if not p.Functions.HasItem(Config.Items.Powerbank or 'powerbank') then return end
+    -- Re-use the same logic via TriggerEvent on server (safe, same process)
+    QBCore.Functions.GetItem(src, Config.Items.Powerbank or 'powerbank', 1, true)
+end)
+
+-- ──────────────────────────────────────────────────────────────
+--  N2: Phone Theft — transfer ownership
+-- ──────────────────────────────────────────────────────────────
+
+RegisterNetEvent('apexphone:server:stealPhone', function(victimSrc)
+    local src    = source
+    local thief  = GetPlayer(src)
+    local victim = GetPlayer(victimSrc)
+    if not thief or not victim then return end
+
+    local thiefCid  = thief.PlayerData.citizenid
+    local victimCid = victim.PlayerData.citizenid
+
+    -- Proximity check: thief must be within 3 metres of victim
+    local thiefPed  = GetPlayerPed(src)
+    local victimPed = GetPlayerPed(victimSrc)
+    if not thiefPed or not victimPed then return end
+    local dx = GetEntityCoords(thiefPed) - GetEntityCoords(victimPed)
+    -- GetEntityCoords returns a vector3; compute distance via FiveM native
+    -- (server natives may not be available for coord math; use a safe check)
+    local thiefCoords  = GetEntityCoords(thiefPed)
+    local victimCoords = GetEntityCoords(victimPed)
+    local dist = #(thiefCoords - victimCoords)
+    if dist > 3.0 then
+        TriggerClientEvent('apexphone:client:pushNotification', src, {
+            title = 'Too Far', message = 'You are not close enough.', type = 'error'
+        })
+        return
+    end
+
+    -- Victim must have a phone item
+    local phoneModel = nil
+    for _, model in ipairs(Config.Items.PhoneModels or {}) do
+        if victim.Functions.HasItem(model) then
+            phoneModel = model
+            break
+        end
+    end
+    if not phoneModel then
+        TriggerClientEvent('apexphone:client:pushNotification', src, {
+            title = 'No Phone', message = 'Target has no phone.', type = 'error'
+        })
+        return
+    end
+
+    -- Reassign DB ownership — keep all data (contacts, messages, IMEI) intact
+    MySQL.query('UPDATE `apexphone_phones` SET `owner` = ? WHERE `citizenid` = ? AND `owner` = ?',
+        { thiefCid, victimCid, victimCid })
+
+    -- Transfer the physical item
+    victim.Functions.RemoveItem(phoneModel, 1)
+    thief.Functions.AddItem(phoneModel, 1)
+    TriggerClientEvent('inventory:client:ItemBox', victimSrc, QBCore.Shared.Items[phoneModel], 'remove')
+    TriggerClientEvent('inventory:client:ItemBox', src,       QBCore.Shared.Items[phoneModel], 'add')
+
+    -- Notify both parties
+    TriggerClientEvent('apexphone:client:phoneStolen', victimSrc)
+    TriggerClientEvent('apexphone:client:pushNotification', victimSrc, {
+        title = 'Phone Stolen', message = 'Someone stole your phone!', type = 'error'
+    })
+    TriggerClientEvent('apexphone:client:pushNotification', src, {
+        title = 'Phone Acquired', message = 'You now have access to this phone.', type = 'success'
+    })
+
+    AdminLog('PHONE_STOLEN', thiefCid, 'Victim: ' .. victimCid .. ' | Model: ' .. phoneModel)
+end)
+
+-- ──────────────────────────────────────────────────────────────
+--  N3: HaaS — hardware module install / remove
+-- ──────────────────────────────────────────────────────────────
+
+local function GetHardwareModules(cid)
+    local rows = MySQL.query.await('SELECT `hardware_modules` FROM `apexphone_phones` WHERE `citizenid` = ? LIMIT 1', { cid })
+    if rows and rows[1] and rows[1].hardware_modules then
+        return json.decode(rows[1].hardware_modules) or {}
+    end
+    return {}
+end
+
+local function SaveHardwareModules(cid, modules)
+    MySQL.query('UPDATE `apexphone_phones` SET `hardware_modules` = ? WHERE `citizenid` = ? AND `owner` = ?',
+        { json.encode(modules), cid, cid })
+end
+
+QBCore.Functions.CreateUseableItem('usb_scanner', function(src)
+    local p = GetPlayer(src)
+    if not p then return end
+    TriggerEvent('apexphone:server:installHardware', src, 'usb_scanner')
+end)
+
+RegisterNetEvent('apexphone:server:installHardware', function(targetSrc, moduleId)
+    local src = source
+    -- Allow both self-install (via item use, targetSrc == src) and server-side calls
+    local actualSrc = targetSrc or src
+    local p = GetPlayer(actualSrc)
+    if not p then return end
+    local cid = p.PlayerData.citizenid
+
+    local allowed = { usb_scanner = true, crypto_miner = true }
+    if not allowed[moduleId] then return end
+
+    -- Verify player owns the corresponding item before installing
+    if not p.Functions.HasItem(moduleId) then
+        TriggerClientEvent('apexphone:client:pushNotification', actualSrc, {
+            title = 'HaaS', message = 'You do not have the required hardware module.', type = 'error'
+        })
+        return
+    end
+
+    local modules = GetHardwareModules(cid)
+    if modules[moduleId] then
+        TriggerClientEvent('apexphone:client:pushNotification', actualSrc, {
+            title = 'HaaS', message = 'Module already installed.', type = 'warning'
+        })
+        return
+    end
+
+    modules[moduleId] = true
+    SaveHardwareModules(cid, modules)
+
+    p.Functions.RemoveItem(moduleId, 1)
+    TriggerClientEvent('apexphone:client:hardwareInstalled', actualSrc, moduleId, modules)
+    TriggerClientEvent('apexphone:client:pushNotification', actualSrc, {
+        title = 'HaaS', message = 'Hardware module installed: ' .. moduleId, type = 'success'
+    })
+    AdminLog('HAAS_INSTALL', cid, 'Module: ' .. moduleId)
+end)
+
+RegisterNetEvent('apexphone:server:removeHardware', function(moduleId)
+    local src = source
+    local p   = GetPlayer(src)
+    if not p then return end
+    local cid = p.PlayerData.citizenid
+
+    local modules = GetHardwareModules(cid)
+    if not modules[moduleId] then return end
+
+    modules[moduleId] = nil
+    SaveHardwareModules(cid, modules)
+
+    -- Return the item to the player's inventory
+    p.Functions.AddItem(moduleId, 1)
+    TriggerClientEvent('inventory:client:ItemBox', src, QBCore.Shared.Items[moduleId], 'add')
+    TriggerClientEvent('apexphone:client:hardwareRemoved', src, moduleId, modules)
+    TriggerClientEvent('apexphone:client:pushNotification', src, {
+        title = 'HaaS', message = 'Hardware module removed: ' .. moduleId, type = 'info'
+    })
+    AdminLog('HAAS_REMOVE', cid, 'Module: ' .. moduleId)
+end)
+
+-- Police can confiscate hardware modules from a target player
+RegisterNetEvent('apexphone:server:confiscateHardware', function(targetSrc, moduleId)
+    local src = source
+    if not IsPoliceOrAdmin(src) then return end
+
+    local p = GetPlayer(targetSrc)
+    if not p then return end
+    local cid = p.PlayerData.citizenid
+
+    local modules = GetHardwareModules(cid)
+    if not modules[moduleId] then return end
+
+    modules[moduleId] = nil
+    SaveHardwareModules(cid, modules)
+
+    TriggerClientEvent('apexphone:client:hardwareRemoved', targetSrc, moduleId, modules)
+    TriggerClientEvent('apexphone:client:pushNotification', targetSrc, {
+        title = 'Confiscated', message = 'Police removed hardware: ' .. moduleId, type = 'error'
+    })
+    TriggerClientEvent('apexphone:client:pushNotification', src, {
+        title = 'Confiscated', message = 'Removed ' .. moduleId .. ' from target phone.', type = 'success'
+    })
+    AdminLog('HAAS_CONFISCATE', GetCitizenId(src), 'Module: ' .. moduleId .. ' from CID: ' .. cid)
+end)
+
+-- ──────────────────────────────────────────────────────────────
 --  Server-side exports for other resources
 -- ──────────────────────────────────────────────────────────────
 
-exports('GetPlayerNumber',  GetPlayerNumber)
+exports('GetPlayerNumber',   GetPlayerNumber)
 exports('GetSourceByNumber', GetSourceByNumber)
-exports('CreatePhone',      CreatePhone)
-exports('CreateSIM',        CreateSIM)
-exports('IsAdmin',          IsAdmin)
-exports('AlertPolice',      AlertPolice)
+exports('CreatePhone',       CreatePhone)
+exports('CreateSIM',         CreateSIM)
+exports('IsAdmin',           IsAdmin)
+exports('IsPoliceOrAdmin',   IsPoliceOrAdmin)
+exports('AlertPolice',       AlertPolice)
+exports('GetHardwareModules', GetHardwareModules)
 
 --- Lets other resources push a notification to a player's phone.
 exports('PushNotification', function(source, data)

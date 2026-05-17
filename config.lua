@@ -15,10 +15,17 @@ Config.Items = {
     PhoneFlagship  = 'phone_flagship',   -- iPhone-style flagship
     PhoneSamsung   = 'phone_samsung',    -- Android flagship
     PhoneBurner    = 'phone_burner',     -- Untraceable burner
+    -- List of all phone model item names (used by stealPhone proximity check)
+    PhoneModels    = { 'phone_flagship', 'phone_samsung', 'phone_burner' },
     -- Accessories
     SimCard        = 'sim_card',
     Charger        = 'phone_charger',
     PhoneCase      = 'phone_case',
+    -- Consumables
+    Powerbank      = 'powerbank',        -- +40% battery charge
+    -- HaaS hardware modules
+    UsbScanner     = 'usb_scanner',      -- unlocks radio scanner NUI capability
+    CryptoMiner    = 'crypto_miner',     -- passive background crypto mining
     -- Temporary / shop receipts
     PhoneBox       = 'phone_box',
 }
@@ -56,11 +63,12 @@ Config.PhoneModels = {
 
 -- ── Battery ──────────────────────────────────────────────────
 Config.Battery = {
-    SaveInterval    = 60,        -- seconds between DB battery saves
-    LowWarning      = 15,        -- % — show low battery notification
-    CriticalWarning = 5,         -- % — red pulse warning
+    SaveInterval     = 60,       -- seconds between DB battery saves
+    LowWarning       = 15,       -- % — show low battery notification
+    CriticalWarning  = 5,        -- % — red pulse warning
     DrainWhileClosed = 0.001,    -- % per second while phone is closed
     ChargeRate       = 0.5,      -- % per second near charger / station
+    PowerbankCharge  = 40,       -- % added by consuming a powerbank item
     ChargingZones   = {          -- world coords of charging stations
         vector3(224.8, -792.8, 30.7),
         vector3(-47.5, -1757.3, 29.4),
@@ -238,6 +246,17 @@ Config.UI = {
     DefaultRingtone  = 'default',
     AnimationSpeed   = 'normal',  -- 'slow' | 'normal' | 'fast'
     DynamicIsland    = true,
+}
+
+-- ── HaaS (Hardware-as-a-Service) ────────────────────────────
+Config.HaaS = {
+    -- Map of moduleId → capabilities it unlocks (NUI app IDs)
+    Modules = {
+        usb_scanner  = { label = 'USB Scanner', unlocks = { 'radio_scanner' } },
+        crypto_miner = { label = 'Crypto Miner', unlocks = { 'passive_mining' } },
+    },
+    -- Police can confiscate these modules via MDT
+    Confiscatable = { 'usb_scanner' },
 }
 
 -- ── Keybind ──────────────────────────────────────────────────

@@ -1,42 +1,43 @@
 -- ============================================================
---  ApexPhone — client.lua
---  All client-side logic: phone open/close, NUI bridge,
---  voice integration, battery, GPS, signal zones, animations.
+--  ApexPhone — client.lua  (v3.1 — hardened)
+--  Fixes:
+--    [F1] Battery race condition → batteryTickId monotonic counter
+--    [F2] StopBatteryDrain properly invalidates thread via counter
+--    [F3] StartLiveGPS has a 30-minute hard timeout
+--  New:
+--    [N1] Powerbank item NUI callback + server event
+--    [N2] Radio Scanner (HaaS) capability unlock
+--    [N3] Phone theft client-side handler
 -- ============================================================
 
-local QBCore   = exports['qb-core']:GetCoreObject()
-local phoneOpen   = false
-local phoneData   = {}          -- cached phone state
-local activeCall  = nil         -- { number, source, speaker, startTime }
-local callTimer   = nil         -- Citizen thread for call duration
-local batteryTick = nil         -- Citizen thread for battery drain
-local gpsThread   = nil         -- Citizen thread for live GPS shares
+local QBCore        = exports['qb-core']:GetCoreObject()
+local phoneOpen     = false
+local phoneData     = {}        -- cached phone state
+local activeCall    = nil       -- { number, source, speaker, startTime }
+local callTimer     = nil
+local batteryTick   = nil       -- current thread coroutine
+local batteryTickId = 0         -- [F1] monotonic counter; each new thread gets its own id
+local gpsThread     = nil
 local currentSignal = Config.DefaultSignal
 local airplaneMode  = false
 local isCharging    = false
-local pingCheckThread = nil
 
 -- ──────────────────────────────────────────────────────────────
 --  Utility helpers
 -- ──────────────────────────────────────────────────────────────
 
---- Returns the player's current coordinates.
 local function GetCoords()
-    local ped = PlayerPedId()
-    return GetEntityCoords(ped)
+    return GetEntityCoords(PlayerPedId())
 end
 
---- Sends a message to the NUI frame.
 local function SendNUI(action, data)
     SendNUIMessage({ action = action, data = data or {} })
 end
 
---- Shows a brief NUI toast notification.
 local function Notify(msg, ntype)
     SendNUI('notify', { message = msg, type = ntype or 'info' })
 end
 
---- Checks if the player currently owns a phone item and returns its metadata.
 local function GetPhoneItem()
     for _, model in pairs({ Config.Items.PhoneFlagship, Config.Items.PhoneSamsung, Config.Items.PhoneBurner }) do
         local item = exports['qb-inventory']:GetItemByName(model)
@@ -45,7 +46,6 @@ local function GetPhoneItem()
     return nil, nil
 end
 
---- Returns the signal level at the current player location.
 local function CalculateSignal()
     if airplaneMode then return 0 end
     local coords = GetCoords()
@@ -61,7 +61,6 @@ end
 --  Phone open / close
 -- ──────────────────────────────────────────────────────────────
 
---- Requests full phone data from server and opens the NUI.
 local function OpenPhone()
     if phoneOpen then return end
 
@@ -71,36 +70,31 @@ local function OpenPhone()
         return
     end
 
-    -- Check battery
     local meta = item.info or {}
     if (meta.battery or 100) <= 0 then
         QBCore.Functions.Notify('Your phone is dead. Charge it first.', 'error', 3000)
         return
     end
 
-    -- Request all phone data (lazy-loaded per app on demand to save bandwidth)
     TriggerServerEvent('apexphone:server:requestPhoneData')
 
-    -- Show NUI
     phoneOpen = true
     SetNuiFocus(true, true)
     SendNUI('open', {
-        model   = model,
-        meta    = meta,
-        signal  = currentSignal,
-        battery = meta.battery or 100,
-        theme   = meta.theme or Config.UI.DefaultTheme,
-        wallpaper = meta.wallpaper or Config.UI.DefaultWallpaper,
-        airplaneMode = airplaneMode,
+        model         = model,
+        meta          = meta,
+        signal        = currentSignal,
+        battery       = meta.battery or 100,
+        theme         = meta.theme or Config.UI.DefaultTheme,
+        wallpaper     = meta.wallpaper or Config.UI.DefaultWallpaper,
+        airplaneMode  = airplaneMode,
         dynamicIsland = Config.UI.DynamicIsland,
     })
 
-    -- Begin battery drain while open
     StartBatteryDrain(model)
     TriggerEvent('apexphone:client:phoneOpened')
 end
 
---- Closes the phone NUI and saves state.
 local function ClosePhone()
     if not phoneOpen then return end
     phoneOpen = false
@@ -112,19 +106,27 @@ local function ClosePhone()
 end
 
 -- ──────────────────────────────────────────────────────────────
---  Battery system
+--  Battery system  [F1] [F2]
 -- ──────────────────────────────────────────────────────────────
 
---- Starts a per-second battery drain tick while the phone is open.
+--- Starts per-second battery drain. Uses a monotonic `batteryTickId`
+--- so that a rapid close→open cycle cannot leave a ghost thread running.
 function StartBatteryDrain(model)
-    if batteryTick then return end
-    local modelCfg = Config.PhoneModels[model] or Config.PhoneModels[Config.Items.PhoneFlagship]
-    batteryTick = Citizen.CreateThread(function()
-        while phoneOpen do
-            Citizen.Wait(1000)
-            if not phoneOpen then break end
+    if batteryTick then return end  -- already running
 
-            -- Charging check
+    local modelCfg = Config.PhoneModels[model] or Config.PhoneModels[Config.Items.PhoneFlagship]
+
+    -- [F1] Stamp this thread with the current id before creating it.
+    batteryTickId  = batteryTickId + 1
+    local myId     = batteryTickId
+
+    batteryTick = Citizen.CreateThread(function()
+        while phoneOpen and batteryTickId == myId do   -- [F1] stale-thread guard
+            Citizen.Wait(1000)
+
+            -- Re-check after wait in case close happened during sleep
+            if not phoneOpen or batteryTickId ~= myId then break end
+
             local coords = GetCoords()
             isCharging = false
             for _, zone in ipairs(Config.Battery.ChargingZones) do
@@ -151,17 +153,23 @@ function StartBatteryDrain(model)
                 break
             end
         end
-        batteryTick = nil
+
+        -- Only clear the handle if we are still the current thread.
+        if batteryTickId == myId then
+            batteryTick = nil
+        end
     end)
 end
 
---- Stops the battery drain tick.
+--- [F2] Stops battery drain by bumping the counter, which causes the
+--- running thread to exit on its next iteration check. No dangling coroutine.
 function StopBatteryDrain()
-    batteryTick = nil
+    batteryTickId = batteryTickId + 1   -- invalidates current thread
+    batteryTick   = nil
 end
 
 -- ──────────────────────────────────────────────────────────────
---  Signal zone polling  (only polls every 5 s to save CPU)
+--  Signal zone polling (every 5 s — event-driven otherwise)
 -- ──────────────────────────────────────────────────────────────
 
 Citizen.CreateThread(function()
@@ -170,20 +178,18 @@ Citizen.CreateThread(function()
         local sig = CalculateSignal()
         if sig ~= currentSignal then
             currentSignal = sig
-            if phoneOpen then
-                SendNUI('signalUpdate', { signal = currentSignal })
-            end
+            if phoneOpen then SendNUI('signalUpdate', { signal = currentSignal }) end
         end
     end
 end)
 
 -- ──────────────────────────────────────────────────────────────
---  Background battery drain (very slow) when phone is closed
+--  Background battery drain (phone closed)
 -- ──────────────────────────────────────────────────────────────
 
 Citizen.CreateThread(function()
     while true do
-        Citizen.Wait(60000) -- every 60 s
+        Citizen.Wait(60000)
         if not phoneOpen and phoneData.battery then
             phoneData.battery = math.max(0, phoneData.battery - (Config.Battery.DrainWhileClosed * 60))
         end
@@ -191,10 +197,9 @@ Citizen.CreateThread(function()
 end)
 
 -- ──────────────────────────────────────────────────────────────
---  Voice call integration (pma-voice / mumble-voip)
+--  Voice call integration
 -- ──────────────────────────────────────────────────────────────
 
---- Joins a dedicated voice channel for the call.
 local function JoinCallChannel(channel)
     if Config.VoiceScript == 'pma-voice' then
         TriggerEvent('pma-voice:setCallChannel', channel)
@@ -203,7 +208,6 @@ local function JoinCallChannel(channel)
     end
 end
 
---- Leaves the call voice channel and returns to proximity voice.
 local function LeaveCallChannel()
     if Config.VoiceScript == 'pma-voice' then
         TriggerEvent('pma-voice:setCallChannel', nil)
@@ -212,7 +216,6 @@ local function LeaveCallChannel()
     end
 end
 
---- Enables or disables the speaker mode (nearby players hear the call).
 local function SetSpeaker(enabled)
     if not activeCall then return end
     activeCall.speaker = enabled
@@ -222,13 +225,11 @@ local function SetSpeaker(enabled)
     SendNUI('callUpdate', { speaker = enabled })
 end
 
--- Incoming call received from server
 RegisterNetEvent('apexphone:client:incomingCall', function(callerNumber, callerName, callId, channel)
-    if currentSignal == 0 then return end  -- no signal
-    activeCall = { callId = callId, number = callerNumber, name = callerName, channel = channel, speaker = false, startTime = nil }
+    if currentSignal == 0 then return end
+    activeCall = { callId = callId, number = callerNumber, name = callerName, channel = channel, speaker = false }
     SendNUI('incomingCall', { callId = callId, number = callerNumber, name = callerName })
 
-    -- Ring timeout — auto decline after Config.Calls.RingTimeout seconds
     SetTimeout(Config.Calls.RingTimeout * 1000, function()
         if activeCall and activeCall.callId == callId and not activeCall.startTime then
             TriggerServerEvent('apexphone:server:declineCall', callId)
@@ -238,14 +239,12 @@ RegisterNetEvent('apexphone:client:incomingCall', function(callerNumber, callerN
     end)
 end)
 
--- Call was answered (both sides confirmed)
 RegisterNetEvent('apexphone:client:callConnected', function(callId, channel)
     if not activeCall or activeCall.callId ~= callId then return end
     activeCall.startTime = GetGameTimer()
     JoinCallChannel(channel)
     SendNUI('callConnected', { callId = callId, channel = channel })
 
-    -- Enforce max call duration
     if Config.Calls.MaxCallDuration > 0 then
         SetTimeout(Config.Calls.MaxCallDuration * 1000, function()
             if activeCall and activeCall.callId == callId then
@@ -255,7 +254,6 @@ RegisterNetEvent('apexphone:client:callConnected', function(callId, channel)
     end
 end)
 
--- Remote party ended / declined the call
 RegisterNetEvent('apexphone:client:callEnded', function(callId, reason)
     if not activeCall or activeCall.callId ~= callId then return end
     LeaveCallChannel()
@@ -264,41 +262,55 @@ RegisterNetEvent('apexphone:client:callEnded', function(callId, reason)
 end)
 
 -- ──────────────────────────────────────────────────────────────
---  GPS & Live location sharing
+--  GPS & Live location sharing  [F3]
 -- ──────────────────────────────────────────────────────────────
 
---- Starts periodically broadcasting the player's coords to all
---- contacts that have been granted live-location access.
+local GPS_MAX_SECONDS = 30 * 60  -- [F3] hard cap: 30 minutes
+
+--- Starts periodic GPS broadcast. Automatically stops after
+--- GPS_MAX_SECONDS to prevent indefinite threads. [F3]
 local function StartLiveGPS()
     if gpsThread then return end
+
+    local interval  = Config.GPS.ShareUpdateInterval  -- seconds
+    local maxIter   = math.floor(GPS_MAX_SECONDS / math.max(interval, 1))
+    local iter      = 0
+
     gpsThread = Citizen.CreateThread(function()
-        while phoneData.sharingGPS do
-            Citizen.Wait(Config.GPS.ShareUpdateInterval * 1000)
+        while phoneData.sharingGPS and iter < maxIter do
+            Citizen.Wait(interval * 1000)
             if not phoneData.sharingGPS then break end
+
+            iter = iter + 1
             local c = GetCoords()
             TriggerServerEvent('apexphone:server:updateGPSShare', c.x, c.y, c.z)
         end
+
+        -- Auto-stop: clean up server state and notify player [F3]
+        if phoneData.sharingGPS then
+            phoneData.sharingGPS = false
+            TriggerServerEvent('apexphone:server:stopGPSShare')
+            Notify('Live GPS sharing timed out (30 min limit).', 'warning')
+            SendNUI('gpsShareStopped', {})
+        end
+
         gpsThread = nil
     end)
 end
 
---- Sets or clears a map waypoint when the player taps a GPS coordinate.
 RegisterNetEvent('apexphone:client:setWaypoint', function(x, y)
     SetNewWaypoint(x, y)
     Notify('Waypoint set.', 'success')
 end)
 
--- Received another player's live location
 RegisterNetEvent('apexphone:client:receiveLiveLocation', function(number, name, x, y, z)
     SendNUI('liveLocation', { number = number, name = name, x = x, y = y, z = z })
 end)
 
 -- ──────────────────────────────────────────────────────────────
---  Camera / Photo system
+--  Camera
 -- ──────────────────────────────────────────────────────────────
 
---- Triggers NUI camera overlay. The JS side uses getUserMedia or a canvas
---- screenshot approach for taking the "photo" (base64 thumbnail).
 local function OpenCamera()
     local item, model = GetPhoneItem()
     if not item then return end
@@ -311,16 +323,15 @@ local function OpenCamera()
 end
 
 -- ──────────────────────────────────────────────────────────────
---  Fingerprint authentication (NUI-side animation bridge)
+--  Fingerprint
 -- ──────────────────────────────────────────────────────────────
 
--- Server responds with fingerprint check result
 RegisterNetEvent('apexphone:client:fingerprintResult', function(success)
     SendNUI('fingerprintResult', { success = success })
 end)
 
 -- ──────────────────────────────────────────────────────────────
---  IMEI clone minigame (dark web feature)
+--  IMEI clone minigame
 -- ──────────────────────────────────────────────────────────────
 
 RegisterNetEvent('apexphone:client:startIMEIClone', function()
@@ -332,14 +343,12 @@ RegisterNetEvent('apexphone:client:startIMEIClone', function()
 end)
 
 -- ──────────────────────────────────────────────────────────────
---  Duress PIN — received from NUI after PIN verification
+--  Duress PIN
 -- ──────────────────────────────────────────────────────────────
 
 RegisterNetEvent('apexphone:client:duressTriggered', function()
-    -- Wipe local cache so nothing is visible in this session
     phoneData = {}
     SendNUI('duressWipe', {})
-    -- Server already sent the police alert
 end)
 
 -- ──────────────────────────────────────────────────────────────
@@ -348,16 +357,14 @@ end)
 
 AddEventHandler('baseevents:onPlayerDied', function()
     if phoneOpen then ClosePhone() end
-    -- Visual cracked-screen effect persists until repaired (stored in meta)
     TriggerServerEvent('apexphone:server:phoneDamaged', 'died')
     SendNUI('phoneDamaged', { reason = 'died' })
 end)
 
 -- ──────────────────────────────────────────────────────────────
---  Proximity-based AirShare (contact sharing)
+--  AirShare proximity contact sharing
 -- ──────────────────────────────────────────────────────────────
 
---- Finds nearby players within AirShare radius and returns their server IDs.
 local function GetNearbyPlayers()
     local coords  = GetCoords()
     local nearby  = {}
@@ -377,12 +384,11 @@ local function GetNearbyPlayers()
 end
 
 RegisterNetEvent('apexphone:client:requestNearby', function()
-    local nearby = GetNearbyPlayers()
-    SendNUI('nearbyPlayers', { players = nearby })
+    SendNUI('nearbyPlayers', { players = GetNearbyPlayers() })
 end)
 
 -- ──────────────────────────────────────────────────────────────
---  Data transfer (phone-to-phone)
+--  Data transfer
 -- ──────────────────────────────────────────────────────────────
 
 RegisterNetEvent('apexphone:client:dataTransferRequest', function(fromName, fromNumber, transferId)
@@ -409,26 +415,69 @@ RegisterNetEvent('apexphone:client:remoteLock', function()
 end)
 
 RegisterNetEvent('apexphone:client:findMyPhone', function(requesterId)
-    -- Respond with current location to the server (server relays to requester)
     local c = GetCoords()
     TriggerServerEvent('apexphone:server:findMyPhoneResponse', requesterId, c.x, c.y, c.z)
 end)
 
 -- ──────────────────────────────────────────────────────────────
---  Dynamic Island helpers
+--  Powerbank item  [N1]
 -- ──────────────────────────────────────────────────────────────
 
---- Pushes a dynamic-island notification (call, music, nav) to the NUI.
+--- Received from server after a powerbank is consumed.
+--- Updates local battery cache and NUI without waiting for next close cycle.
+RegisterNetEvent('apexphone:client:powerbank', function(newBattery)
+    phoneData.battery = newBattery
+
+    -- If the phone was dead, re-open it
+    if not phoneOpen then
+        OpenPhone()
+    else
+        SendNUI('batteryUpdate', { battery = newBattery, charging = false })
+        Notify('Powerbank applied: ' .. math.floor(newBattery) .. '% battery.', 'success')
+    end
+end)
+
+-- ──────────────────────────────────────────────────────────────
+--  Phone theft  [N3]
+-- ──────────────────────────────────────────────────────────────
+
+--- Server notifies the victim that their phone was taken.
+RegisterNetEvent('apexphone:client:phoneStolen', function()
+    if phoneOpen then ClosePhone() end
+    -- Clear all local state so the thief's NUI cannot access victim data
+    phoneData = {}
+    QBCore.Functions.Notify('Your phone has been stolen!', 'error', 8000)
+end)
+
+-- ──────────────────────────────────────────────────────────────
+--  HaaS — Radio Scanner capability  [N2]
+-- ──────────────────────────────────────────────────────────────
+
+--- Server confirms USB scanner was installed; unlock the NUI capability.
+RegisterNetEvent('apexphone:client:hardwareInstalled', function(module)
+    SendNUI('hardwareInstalled', { module = module })
+    Notify('Hardware module installed: ' .. tostring(module), 'success')
+end)
+
+--- Server confirms USB scanner was removed (confiscated by police, etc.).
+RegisterNetEvent('apexphone:client:hardwareRemoved', function(module)
+    SendNUI('hardwareRemoved', { module = module })
+    Notify('Hardware module removed: ' .. tostring(module), 'warning')
+end)
+
+-- ──────────────────────────────────────────────────────────────
+--  Dynamic Island
+-- ──────────────────────────────────────────────────────────────
+
 local function DynamicIsland(type, data)
     if not Config.UI.DynamicIsland then return end
     SendNUI('dynamicIsland', { type = type, data = data })
 end
 
--- Expose for other resources
 exports('DynamicIsland', DynamicIsland)
 
 -- ──────────────────────────────────────────────────────────────
---  Server → Client: full phone data delivered
+--  Server → Client data delivery
 -- ──────────────────────────────────────────────────────────────
 
 RegisterNetEvent('apexphone:client:phoneData', function(data)
@@ -440,28 +489,21 @@ RegisterNetEvent('apexphone:client:appData', function(app, data)
     SendNUI('appData', { app = app, data = data })
 end)
 
--- ──────────────────────────────────────────────────────────────
---  Notifications pushed from server (SMS, missed call, etc.)
--- ──────────────────────────────────────────────────────────────
-
 RegisterNetEvent('apexphone:client:pushNotification', function(notif)
-    -- Show even if phone is closed — small overlay
     SendNUI('pushNotification', notif)
     DynamicIsland('notification', notif)
 end)
 
 -- ──────────────────────────────────────────────────────────────
---  NUI Callbacks — JS → Lua bridge
+--  NUI Callbacks
 -- ──────────────────────────────────────────────────────────────
 
--- Phone close button
 RegisterNUICallback('closePhone', function(_, cb)
     ClosePhone()
     cb('ok')
 end)
 
--- ── Authentication ───────────────────────────────────────────
-
+-- Auth
 RegisterNUICallback('verifyFingerprint', function(data, cb)
     TriggerServerEvent('apexphone:server:verifyFingerprint')
     cb('ok')
@@ -473,8 +515,7 @@ RegisterNUICallback('verifyPIN', function(data, cb)
     cb('ok')
 end)
 
--- ── Calls ────────────────────────────────────────────────────
-
+-- Calls
 RegisterNUICallback('makeCall', function(data, cb)
     if currentSignal == 0 then cb({ error = 'No signal' }) return end
     if airplaneMode     then cb({ error = 'Airplane mode is on' }) return end
@@ -508,8 +549,7 @@ RegisterNUICallback('setSpeaker', function(data, cb)
     cb('ok')
 end)
 
--- ── Messages ─────────────────────────────────────────────────
-
+-- Messages
 RegisterNUICallback('sendMessage', function(data, cb)
     if currentSignal == 0 then cb({ error = 'No signal' }) return end
     if not data.to or not data.message then cb({ error = 'Invalid data' }) return end
@@ -517,7 +557,7 @@ RegisterNUICallback('sendMessage', function(data, cb)
         to      = tostring(data.to),
         message = tostring(data.message):sub(1, 500),
         type    = data.type or 'sms',
-        media   = data.media,   -- base64 image or GPS coords table
+        media   = data.media,
     })
     cb('ok')
 end)
@@ -547,8 +587,7 @@ RegisterNUICallback('shareContact', function(data, cb)
     cb('ok')
 end)
 
--- ── Contacts ─────────────────────────────────────────────────
-
+-- Contacts
 RegisterNUICallback('saveContact', function(data, cb)
     if not data.name or not data.number then cb({ error = 'Invalid' }) return end
     TriggerServerEvent('apexphone:server:saveContact', {
@@ -570,8 +609,7 @@ RegisterNUICallback('loadContacts', function(_, cb)
     cb('ok')
 end)
 
--- ── Banking ──────────────────────────────────────────────────
-
+-- Banking
 RegisterNUICallback('getBankData', function(_, cb)
     TriggerServerEvent('apexphone:server:loadApp', 'bank')
     cb('ok')
@@ -595,8 +633,7 @@ RegisterNUICallback('payInvoice', function(data, cb)
     cb('ok')
 end)
 
--- ── Crypto ───────────────────────────────────────────────────
-
+-- Crypto
 RegisterNUICallback('buyCrypto', function(data, cb)
     if not data.coin or not data.amount then cb({ error = 'Invalid' }) return end
     TriggerServerEvent('apexphone:server:buyCrypto', { coin = data.coin, amount = tonumber(data.amount) })
@@ -609,8 +646,7 @@ RegisterNUICallback('sellCrypto', function(data, cb)
     cb('ok')
 end)
 
--- ── Social Media ─────────────────────────────────────────────
-
+-- Social
 RegisterNUICallback('postTweet', function(data, cb)
     if not data.content then cb({ error = 'Invalid' }) return end
     TriggerServerEvent('apexphone:server:postSocial', { app = 'catiter', content = tostring(data.content):sub(1, 280), media = data.media })
@@ -635,8 +671,7 @@ RegisterNUICallback('deleteSocialPost', function(data, cb)
     cb('ok')
 end)
 
--- ── GPS ──────────────────────────────────────────────────────
-
+-- GPS
 RegisterNUICallback('setWaypoint', function(data, cb)
     if not data.x or not data.y then cb({ error = 'Invalid' }) return end
     SetNewWaypoint(tonumber(data.x), tonumber(data.y))
@@ -668,8 +703,7 @@ RegisterNUICallback('sendLocationSMS', function(data, cb)
     cb('ok')
 end)
 
--- ── Camera / Gallery ─────────────────────────────────────────
-
+-- Camera / Gallery
 RegisterNUICallback('openCamera', function(_, cb)
     OpenCamera()
     cb('ok')
@@ -678,7 +712,7 @@ end)
 RegisterNUICallback('savePhoto', function(data, cb)
     if not data.base64 then cb({ error = 'Invalid' }) return end
     TriggerServerEvent('apexphone:server:savePhoto', {
-        data    = data.base64:sub(1, 1024 * 1024 * 5), -- 5 MB max
+        data    = data.base64:sub(1, 1024 * 1024 * 5),
         caption = tostring(data.caption or ''):sub(1, 200),
     })
     cb('ok')
@@ -690,8 +724,7 @@ RegisterNUICallback('deletePhoto', function(data, cb)
     cb('ok')
 end)
 
--- ── Marketplace ──────────────────────────────────────────────
-
+-- Marketplace
 RegisterNUICallback('createListing', function(data, cb)
     if not data.title or not data.price then cb({ error = 'Invalid' }) return end
     TriggerServerEvent('apexphone:server:createListing', {
@@ -720,8 +753,7 @@ RegisterNUICallback('contactSeller', function(data, cb)
     cb('ok')
 end)
 
--- ── Dark Web ─────────────────────────────────────────────────
-
+-- Dark Web
 RegisterNUICallback('darkWebBuy', function(data, cb)
     if not data.itemId then cb({ error = 'Invalid' }) return end
     TriggerServerEvent('apexphone:server:darkWebBuy', tonumber(data.itemId))
@@ -756,16 +788,15 @@ RegisterNUICallback('imeiCloneResult', function(data, cb)
     cb('ok')
 end)
 
--- ── Settings ─────────────────────────────────────────────────
-
+-- Settings
 RegisterNUICallback('saveSettings', function(data, cb)
     TriggerServerEvent('apexphone:server:saveSettings', {
-        theme      = data.theme,
-        wallpaper  = data.wallpaper,
-        ringtone   = data.ringtone,
-        darkMode   = data.darkMode,
-        pin        = data.pin and tostring(data.pin):sub(1, 6) or nil,
-        duressPin  = data.duressPin and tostring(data.duressPin):sub(1, 6) or nil,
+        theme     = data.theme,
+        wallpaper = data.wallpaper,
+        ringtone  = data.ringtone,
+        darkMode  = data.darkMode,
+        pin       = data.pin and tostring(data.pin):sub(1, 6) or nil,
+        duressPin = data.duressPin and tostring(data.duressPin):sub(1, 6) or nil,
     })
     cb('ok')
 end)
@@ -789,8 +820,7 @@ RegisterNUICallback('remoteLock', function(data, cb)
     cb('ok')
 end)
 
--- ── MDT / Police ─────────────────────────────────────────────
-
+-- MDT
 RegisterNUICallback('mdtLookupIMEI', function(data, cb)
     if not data.imei then cb({ error = 'Invalid' }) return end
     TriggerServerEvent('apexphone:server:mdtLookupIMEI', tostring(data.imei):sub(1, 20))
@@ -803,8 +833,7 @@ RegisterNUICallback('mdtFlagIMEI', function(data, cb)
     cb('ok')
 end)
 
--- ── Data Transfer ────────────────────────────────────────────
-
+-- Data Transfer
 RegisterNUICallback('initiateDataTransfer', function(data, cb)
     if not data.targetServerId then cb({ error = 'Invalid' }) return end
     TriggerServerEvent('apexphone:server:initiateDataTransfer', tonumber(data.targetServerId))
@@ -827,8 +856,7 @@ RegisterNUICallback('cloudRestore', function(_, cb)
     cb('ok')
 end)
 
--- ── Email ─────────────────────────────────────────────────────
-
+-- Email
 RegisterNUICallback('sendEmail', function(data, cb)
     if not data.to or not data.subject or not data.body then cb({ error = 'Invalid' }) return end
     TriggerServerEvent('apexphone:server:sendEmail', {
@@ -840,8 +868,7 @@ RegisterNUICallback('sendEmail', function(data, cb)
     cb('ok')
 end)
 
--- ── Garage ────────────────────────────────────────────────────
-
+-- Garage
 RegisterNUICallback('getGarageVehicles', function(_, cb)
     TriggerServerEvent('apexphone:server:loadApp', 'garage')
     cb('ok')
@@ -853,14 +880,13 @@ RegisterNUICallback('retrieveVehicle', function(data, cb)
     cb('ok')
 end)
 
--- ── Uber-style Taxi ──────────────────────────────────────────
-
+-- Taxi
 RegisterNUICallback('requestRide', function(data, cb)
     local c = GetCoords()
     TriggerServerEvent('apexphone:server:requestRide', {
-        pickup  = { x = c.x, y = c.y, z = c.z },
-        dest    = data.dest,
-        note    = tostring(data.note or ''):sub(1, 100),
+        pickup = { x = c.x, y = c.y, z = c.z },
+        dest   = data.dest,
+        note   = tostring(data.note or ''):sub(1, 100),
     })
     cb('ok')
 end)
@@ -871,8 +897,20 @@ RegisterNUICallback('acceptRide', function(data, cb)
     cb('ok')
 end)
 
--- ── App Lazy Load ────────────────────────────────────────────
+-- HaaS — install/remove USB scanner  [N2]
+RegisterNUICallback('installHardware', function(data, cb)
+    if not data.module then cb({ error = 'Invalid' }) return end
+    TriggerServerEvent('apexphone:server:installHardware', tostring(data.module))
+    cb('ok')
+end)
 
+RegisterNUICallback('removeHardware', function(data, cb)
+    if not data.module then cb({ error = 'Invalid' }) return end
+    TriggerServerEvent('apexphone:server:removeHardware', tostring(data.module))
+    cb('ok')
+end)
+
+-- Lazy app load
 RegisterNUICallback('loadApp', function(data, cb)
     if not data.app then cb({ error = 'Invalid' }) return end
     TriggerServerEvent('apexphone:server:loadApp', tostring(data.app))
@@ -880,26 +918,22 @@ RegisterNUICallback('loadApp', function(data, cb)
 end)
 
 -- ──────────────────────────────────────────────────────────────
---  Keybinding to open/close phone
+--  Keybinding
 -- ──────────────────────────────────────────────────────────────
 
 RegisterKeyMapping('apexphone_toggle', 'Open / Close Phone', 'keyboard', Config.OpenKey)
 
 RegisterCommand('apexphone_toggle', function()
-    if phoneOpen then
-        ClosePhone()
-    else
-        OpenPhone()
-    end
+    if phoneOpen then ClosePhone() else OpenPhone() end
 end, false)
 
 -- ──────────────────────────────────────────────────────────────
---  Export for other resources
+--  Exports
 -- ──────────────────────────────────────────────────────────────
 
-exports('IsPhoneOpen',     function() return phoneOpen end)
-exports('OpenPhone',       OpenPhone)
-exports('ClosePhone',      ClosePhone)
-exports('GetPhoneSignal',  function() return currentSignal end)
-exports('IsAirplaneMode',  function() return airplaneMode end)
+exports('IsPhoneOpen',      function() return phoneOpen end)
+exports('OpenPhone',        OpenPhone)
+exports('ClosePhone',       ClosePhone)
+exports('GetPhoneSignal',   function() return currentSignal end)
+exports('IsAirplaneMode',   function() return airplaneMode end)
 exports('PushNotification', function(notif) TriggerEvent('apexphone:client:pushNotification', notif) end)
