@@ -103,6 +103,7 @@ AddEventHandler('playerDropped', function()
     for num, s in pairs(numberSourceCache) do
         if s == src then numberSourceCache[num] = nil end
     end
+    phoneOpenSources[src] = nil
 end)
 
 -- ──────────────────────────────────────────────────────────────
@@ -517,6 +518,8 @@ RegisterNetEvent('apexphone:server:requestPhoneData', function()
 
     -- F8: keep numberSourceCache fresh on every phone open
     if number then numberSourceCache[number] = src end
+    -- Track phone-open sources for targeted crypto broadcasts
+    phoneOpenSources[src] = true
 
     -- Only send lightweight initial data; apps lazy-load on demand
     TriggerClientEvent('apexphone:client:phoneData', src, {
@@ -585,7 +588,7 @@ RegisterNetEvent('apexphone:server:loadApp', function(app)
         data = MySQL.query.await('SELECT `id`,`caption`,`created_at` FROM `apexphone_gallery` WHERE `citizenid` = ? ORDER BY `created_at` DESC', { cid })
 
     elseif app == 'marketplace' then
-        data = MySQL.query.await('SELECT * FROM `apexphone_marketplace` WHERE `active` = 1 AND (`expires_at` IS NULL OR `expires_at` > NOW()) ORDER BY `created_at` DESC')
+        data = MySQL.query.await('SELECT * FROM `apexphone_marketplace` WHERE `active` = 1 AND (`expires_at` IS NULL OR `expires_at` > NOW()) ORDER BY `created_at` DESC LIMIT 100')
 
     elseif app == 'catiter' then
         data = MySQL.query.await('SELECT * FROM `apexphone_social` WHERE `app` = "catiter" ORDER BY `created_at` DESC LIMIT 100')
@@ -602,7 +605,7 @@ RegisterNetEvent('apexphone:server:loadApp', function(app)
 
     elseif app == 'darkweb' then
         data = {
-            listings = MySQL.query.await('SELECT * FROM `apexphone_dark_listings` WHERE `active` = 1 AND (`expires_at` IS NULL OR `expires_at` > NOW()) ORDER BY `created_at` DESC'),
+            listings = MySQL.query.await('SELECT * FROM `apexphone_dark_listings` WHERE `active` = 1 AND (`expires_at` IS NULL OR `expires_at` > NOW()) ORDER BY `created_at` DESC LIMIT 100'),
             blacklist = Config.DarkWeb.BlacklistItems,
         }
 
@@ -642,6 +645,8 @@ RegisterNetEvent('apexphone:server:phoneClosed', function(battery)
     -- Only update the record that this player actually owns
     MySQL.query('UPDATE `apexphone_phones` SET `battery` = ? WHERE `citizenid` = ? AND `owner` = ?',
         { batt, cid, cid })
+    -- Deregister from phone-open sources (stop receiving crypto ticks)
+    phoneOpenSources[src] = nil
 end)
 
 -- ──────────────────────────────────────────────────────────────
@@ -728,6 +733,29 @@ local function NewCallId()
     return 'call_' .. GetGameTimer() .. '_' .. callCounter
 end
 
+-- Prune calls that exceeded 30 min (client crash / missed end event)
+Citizen.CreateThread(function()
+    while true do
+        Citizen.Wait(60 * 1000)
+        local now = os.time()
+        for id, call in pairs(activeCalls) do
+            if call.startTime and (now - call.startTime) > 1800 then
+                TriggerClientEvent('apexphone:client:callEnded', call.callerSrc, id, 'timeout')
+                TriggerClientEvent('apexphone:client:callEnded', call.calleeSrc, id, 'timeout')
+                activeCalls[id] = nil
+            elseif not call.startTime and (now - (call.createdAt or now)) > 60 then
+                -- Unanswered for > 60 s
+                TriggerClientEvent('apexphone:client:callEnded', call.callerSrc, id, 'missed')
+                activeCalls[id] = nil
+            end
+        end
+        -- Prune expired PIN lockouts
+        for cid, lock in pairs(pinLockouts) do
+            if lock.unlocksAt < now then pinLockouts[cid] = nil end
+        end
+    end
+end)
+
 RegisterNetEvent('apexphone:server:makeCall', function(targetNumber)
     local src = source
     local cid = GetCitizenId(src)
@@ -756,6 +784,7 @@ RegisterNetEvent('apexphone:server:makeCall', function(targetNumber)
         calleeNumber = targetNumber,
         channel      = channel,
         startTime    = nil,
+        createdAt    = os.time(),
     }
 
     -- Find caller's name for the receiver
@@ -1089,30 +1118,44 @@ local function LoadCryptoPrices()
 end
 
 --- Periodic price fluctuation tick.
+-- Track which server sources currently have the phone open (for targeted crypto broadcasts)
+local phoneOpenSources = {}
+
 function StartCryptoPriceTick()
     LoadCryptoPrices()
     Citizen.CreateThread(function()
         while true do
             Citizen.Wait(Config.Crypto.UpdateInterval * 1000)
 
+            -- Skip entire tick if no one has phone open (saves DB writes + network)
+            local targets = {}
+            for src in pairs(phoneOpenSources) do table.insert(targets, src) end
+            if #targets == 0 then goto continue end
+
             local playerCount = #QBCore.Functions.GetPlayers()
             local maxPlayers  = GetConvarInt('sv_maxclients', 64)
             local busyness    = playerCount / math.max(maxPlayers, 1)
 
             for _, coin in ipairs(Config.Crypto.Coins) do
-                local current = CryptoPrices[coin.id] or coin.basePrice
-                local rnd     = (math.random() * 2 - 1) * Config.Crypto.VolatilityFactor
-                local serverEffect = (busyness - 0.5) * Config.Crypto.ServerBusynessWeight
-                local change  = current * (rnd + serverEffect)
-                local newPrice = math.max(1, current + change)
-                CryptoPrices[coin.id] = newPrice
-                MySQL.query('UPDATE `apexphone_crypto_prices` SET `price` = ? WHERE `coin` = ?', { newPrice, coin.id })
+                local current  = CryptoPrices[coin.id] or coin.basePrice
+                local rnd      = (math.random() * 2 - 1) * Config.Crypto.VolatilityFactor
+                local srvEff   = (busyness - 0.5) * Config.Crypto.ServerBusynessWeight
+                local newPrice = math.max(1, current + current * (rnd + srvEff))
+                -- Only write to DB if price actually changed by > 0.01%
+                if math.abs(newPrice - current) / current > 0.0001 then
+                    CryptoPrices[coin.id] = newPrice
+                    MySQL.query('UPDATE `apexphone_crypto_prices` SET `price` = ? WHERE `coin` = ?', { newPrice, coin.id })
+                end
             end
 
-            -- Broadcast updated prices to all players with phone open
+            -- Broadcast only to players who have the phone open
             local prices = {}
             for k, v in pairs(CryptoPrices) do table.insert(prices, { coin = k, price = v }) end
-            TriggerClientEvent('apexphone:client:cryptoPriceUpdate', -1, prices)
+            for _, tSrc in ipairs(targets) do
+                TriggerClientEvent('apexphone:client:cryptoPriceUpdate', tSrc, prices)
+            end
+
+            ::continue::
         end
     end)
 end

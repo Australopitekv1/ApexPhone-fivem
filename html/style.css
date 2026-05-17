@@ -92,7 +92,10 @@ body {
   height: 34px;
   width: 120px;
   z-index: 100;
-  transition: all 0.4s cubic-bezier(0.22,1,0.36,1);
+  transition: width 0.4s cubic-bezier(0.22,1,0.36,1),
+              height 0.4s cubic-bezier(0.22,1,0.36,1),
+              background 0.4s cubic-bezier(0.22,1,0.36,1);
+  will-change: width, height;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -161,8 +164,8 @@ body {
   transition: width 0.5s, background 0.5s;
 }
 
-#sb-bat-fill.low    { background: var(--accent-yellow); }
-#sb-bat-fill.critical{ background: var(--accent-red); animation: pulse 1s infinite; }
+#sb-bat-fill.low      { background: var(--accent-yellow); }
+#sb-bat-fill.critical { background: var(--accent-red); animation: pulse 1s 10 forwards; will-change: opacity; }
 
 @keyframes pulse { 50% { opacity: 0.4; } }
 
@@ -266,6 +269,7 @@ body {
   border: 3px solid var(--accent);
   border-radius: 50%;
   animation: fpScan 1.5s ease-in-out infinite;
+  will-change: transform, opacity;
 }
 
 @keyframes fpScan {
@@ -557,7 +561,8 @@ body {
   font-size: 26px;
   cursor: pointer;
   box-shadow: 0 4px 20px rgba(46,204,113,0.4);
-  transition: transform var(--transition), box-shadow var(--transition);
+  transition: transform var(--transition);
+  will-change: transform;
 }
 #btn-call-dial:hover { transform: scale(1.08); }
 

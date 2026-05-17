@@ -174,7 +174,8 @@ end
 
 Citizen.CreateThread(function()
     while true do
-        Citizen.Wait(5000)
+        -- Poll faster when phone is open (player can see signal), slower when closed
+        Citizen.Wait(phoneOpen and 5000 or 15000)
         local sig = CalculateSignal()
         if sig ~= currentSignal then
             currentSignal = sig
@@ -367,16 +368,15 @@ end)
 
 local function GetNearbyPlayers()
     local coords  = GetCoords()
+    local myPid   = PlayerId()
     local nearby  = {}
-    local players = GetActivePlayers()
-    for _, pid in ipairs(players) do
-        if pid ~= PlayerId() then
+    local radius  = Config.Messages.AirShareRadius
+    for _, pid in ipairs(GetActivePlayers()) do
+        if pid ~= myPid then
             local ped = GetPlayerPed(pid)
-            if DoesEntityExist(ped) then
-                local pcoords = GetEntityCoords(ped)
-                if #(coords - pcoords) <= Config.Messages.AirShareRadius then
-                    table.insert(nearby, { id = GetPlayerServerId(pid), name = GetPlayerName(pid) })
-                end
+            -- DoesEntityExist is cheap; GetEntityCoords only called when entity valid
+            if DoesEntityExist(ped) and #(coords - GetEntityCoords(ped)) <= radius then
+                table.insert(nearby, { id = GetPlayerServerId(pid), name = GetPlayerName(pid) })
             end
         end
     end

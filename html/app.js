@@ -88,7 +88,7 @@ function updateClock() {
   if (wd) wd.textContent = now.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'short' });
 }
 
-setInterval(updateClock, 1000);
+const _clockInterval = setInterval(updateClock, 1000);
 updateClock();
 
 // ── Battery UI ───────────────────────────────────────────────────
@@ -464,21 +464,21 @@ const Messages = {
     const el = document.getElementById('thread-list');
     if (!el) return;
 
-    // Group by thread_id and show latest per thread
-    const grouped = {};
+    // Group by thread_id, keep latest message per thread
+    const grouped = new Map();
     (threads || []).forEach(m => {
-      const key = m.thread_id;
-      if (!grouped[key] || new Date(m.created_at) > new Date(grouped[key].created_at)) {
-        grouped[key] = m;
-      }
+      const prev = grouped.get(m.thread_id);
+      if (!prev || m.created_at > prev.created_at) grouped.set(m.thread_id, m);
     });
 
-    const contacts = State.appData.contacts || [];
-    const entries  = Object.values(grouped).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    // Build O(1) contact lookup Map so contacts.find doesn't scan array per thread
+    const contactMap = new Map((State.appData.contacts || []).map(c => [c.number, c]));
+    const myNumber   = State.phoneData?.number;
+    const entries    = [...grouped.values()].sort((a, b) => (b.created_at > a.created_at ? 1 : -1));
 
     el.innerHTML = entries.map(m => {
-      const otherNum = m.from_number === State.phoneData?.number ? m.to_number : m.from_number;
-      const contact  = contacts.find(c => c.number === otherNum);
+      const otherNum = m.from_number === myNumber ? m.to_number : m.from_number;
+      const contact  = contactMap.get(otherNum);
       const name     = contact ? contact.name : otherNum;
       const initials = name.charAt(0).toUpperCase();
       const preview  = m.type === 'location' ? '📍 Location' : (m.message || '').substring(0, 40);
@@ -543,7 +543,7 @@ const Messages = {
 
     NUI.callback('sendMessage', { to: this.activeThread.number, message: msg });
 
-    // Optimistic update
+    // Optimistic update — cap array to avoid unbounded memory growth
     const now = new Date().toISOString();
     State.appData.messages = State.appData.messages || [];
     State.appData.messages.push({
@@ -554,6 +554,7 @@ const Messages = {
       type:        'sms',
       created_at:  now,
     });
+    if (State.appData.messages.length > 500) State.appData.messages.splice(0, 100);
 
     const msgs = (State.appData.messages || []).filter(m => m.thread_id === this.activeThread.threadId);
     this._renderMessages(msgs);
@@ -737,11 +738,14 @@ const Crypto = {
     if (!el) return;
     if (!holdings.length) { el.innerHTML = '<p style="padding:16px;color:var(--text-secondary)">No holdings</p>'; return; }
 
+    // Build O(1) price lookup Map before rendering
+    const priceMap = new Map((prices || []).map(p => [p.coin, p.price || 0]));
+
     el.innerHTML = '<h4 style="padding:12px 16px 4px;font-size:13px;color:var(--text-secondary);text-transform:uppercase;letter-spacing:1px">Your Holdings</h4>'
       + holdings.map(h => {
-          const price = (prices.find(p => p.coin === h.coin) || {}).price || 0;
+          const price = priceMap.get(h.coin) || 0;
           const value = (h.amount * price).toFixed(2);
-          return `<div class="crypto-row" onclick="Crypto.selectCoin('${esc(h.coin)}')">
+          return `<div class="crypto-row" data-coin="${esc(h.coin)}" onclick="Crypto.selectCoin('${esc(h.coin)}')">
             <span class="crypto-symbol">${esc(h.coin)}</span>
             <span class="crypto-name">${esc(h.coin)} · ${parseFloat(h.amount).toFixed(4)}</span>
             <span class="crypto-price">$${parseFloat(value).toLocaleString()}</span>
@@ -752,13 +756,16 @@ const Crypto = {
   _renderMarket(coins, prices) {
     const el = document.getElementById('crypto-market');
     if (!el) return;
+
+    // Build O(1) price lookup Map before rendering
+    const priceMap = new Map((prices || []).map(p => [p.coin, p.price]));
+
     el.innerHTML = '<h4 style="padding:12px 16px 4px;font-size:13px;color:var(--text-secondary);text-transform:uppercase;letter-spacing:1px">Market</h4>'
       + coins.map(c => {
-          const priceRow = prices.find(p => p.coin === c.id) || {};
-          const price    = priceRow.price || c.basePrice;
-          const change   = ((price - c.basePrice) / c.basePrice * 100).toFixed(2);
-          const dir      = change >= 0 ? 'up' : 'down';
-          return `<div class="crypto-row" onclick="Crypto.selectCoin('${esc(c.id)}')">
+          const price  = priceMap.get(c.id) ?? c.basePrice;
+          const change = ((price - c.basePrice) / c.basePrice * 100).toFixed(2);
+          const dir    = change >= 0 ? 'up' : 'down';
+          return `<div class="crypto-row" data-coin="${esc(c.id)}" onclick="Crypto.selectCoin('${esc(c.id)}')">
             <span class="crypto-symbol">${esc(c.id)}</span>
             <span class="crypto-name">${esc(c.name)}</span>
             <span class="crypto-price">$${parseFloat(price).toLocaleString()}</span>
@@ -787,15 +794,12 @@ const Crypto = {
   },
 
   updatePrices(prices) {
+    // O(1) per coin via data-coin attribute selector instead of scanning all .crypto-row children
     prices.forEach(p => {
-      // Update rendered prices in-place
-      document.querySelectorAll(`.crypto-row`).forEach(row => {
-        const sym = row.querySelector('.crypto-symbol');
-        if (sym && sym.textContent === p.coin) {
-          const priceEl = row.querySelector('.crypto-price');
-          if (priceEl) priceEl.textContent = `$${parseFloat(p.price).toLocaleString()}`;
-        }
-      });
+      const row = document.querySelector(`.crypto-row[data-coin="${p.coin}"]`);
+      if (!row) return;
+      const priceEl = row.querySelector('.crypto-price');
+      if (priceEl) priceEl.textContent = `$${parseFloat(p.price).toLocaleString()}`;
     });
   },
 };
@@ -1039,25 +1043,31 @@ const Email = {
 function renderSocialFeed(feedId, posts, app) {
   const el = document.getElementById(feedId);
   if (!el) return;
-  el.innerHTML = (posts || []).map(p => {
-    const media = typeof p.media === 'string' ? JSON.parse(p.media || 'null') : p.media;
-    return `<div class="social-post">
-      <div class="post-header">
-        <div class="post-avatar">${esc((p.display_name || '?').charAt(0))}</div>
-        <div>
-          <div class="post-name">${esc(p.display_name || 'Anonymous')}</div>
-          <div class="post-time">${fmtDate(p.created_at)}</div>
-        </div>
+  if (!posts || !posts.length) {
+    el.innerHTML = '<p style="padding:20px;text-align:center;color:var(--text-secondary)">No posts yet</p>';
+    return;
+  }
+  // Pre-parse media JSON outside of template string to avoid repeated parse overhead
+  const parsed = posts.map(p => ({
+    ...p,
+    _media: typeof p.media === 'string' ? (() => { try { return JSON.parse(p.media); } catch { return null; } })() : p.media,
+  }));
+  el.innerHTML = parsed.map(p => `<div class="social-post">
+    <div class="post-header">
+      <div class="post-avatar">${esc((p.display_name || '?').charAt(0))}</div>
+      <div>
+        <div class="post-name">${esc(p.display_name || 'Anonymous')}</div>
+        <div class="post-time">${fmtDate(p.created_at)}</div>
       </div>
-      <div class="post-content">${esc(p.content)}</div>
-      ${media?.url ? `<div class="post-media"><img src="${esc(media.url)}" alt=""/></div>` : ''}
-      <div class="post-actions">
-        <button id="like-${p.id}-${app}" onclick="likeSocial(${p.id},'${app}',this)">♥ ${p.likes || 0}</button>
-        <button onclick="replyToPost('${esc(p.display_name)}')">💬 Reply</button>
-        <button onclick="deleteSocial(${p.id},'${app}')">🗑</button>
-      </div>
-    </div>`;
-  }).join('') || '<p style="padding:20px;text-align:center;color:var(--text-secondary)">No posts yet</p>';
+    </div>
+    <div class="post-content">${esc(p.content)}</div>
+    ${p._media?.url ? `<div class="post-media"><img src="${esc(p._media.url)}" loading="lazy" alt=""/></div>` : ''}
+    <div class="post-actions">
+      <button id="like-${p.id}-${app}" onclick="likeSocial(${p.id},'${app}',this)">♥ ${p.likes || 0}</button>
+      <button onclick="replyToPost('${esc(p.display_name)}')">💬 Reply</button>
+      <button onclick="deleteSocial(${p.id},'${app}')">🗑</button>
+    </div>
+  </div>`).join('');
 }
 
 function likeSocial(id, app, btn) {
@@ -1093,11 +1103,22 @@ const Catiter = {
   },
 };
 
-document.getElementById('catiter-text')?.addEventListener('input', function() {
-  const remain = 280 - this.value.length;
-  document.getElementById('catiter-char-count').textContent = remain;
-  document.getElementById('catiter-char-count').style.color = remain < 20 ? 'var(--accent-red)' : 'var(--text-secondary)';
-});
+// Cache counter element reference; debounce color updates to avoid forced style recalc per keystroke
+;(function() {
+  const textarea   = document.getElementById('catiter-text');
+  const counter    = document.getElementById('catiter-char-count');
+  if (!textarea || !counter) return;
+  let lastRed = false;
+  textarea.addEventListener('input', function() {
+    const remain = 280 - this.value.length;
+    counter.textContent = remain;
+    const wantRed = remain < 20;
+    if (wantRed !== lastRed) {
+      counter.style.color = wantRed ? 'var(--accent-red)' : 'var(--text-secondary)';
+      lastRed = wantRed;
+    }
+  });
+})();
 
 // InstaPic
 const InstaPic = {
@@ -1577,6 +1598,11 @@ window.addEventListener('message', ({ data }) => {
       el.classList.add('hidden');
       el.classList.remove('open');
       State.open = false;
+      // Clean up any running timers that should only tick while phone is open
+      clearInterval(Phone.callTimerInterval);
+      clearInterval(DarkWeb._mgTimer);
+      Phone.callTimerInterval = null;
+      DarkWeb._mgTimer = null;
       break;
     }
 
