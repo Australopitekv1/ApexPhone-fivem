@@ -1,0 +1,1619 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>ApexPhone v3.0 — Preview</title>
+<style>
+/* ── PAGE LAYOUT ─────────────────────────────────────── */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+body{
+  min-height:100vh;
+  background:radial-gradient(ellipse at 60% 0%,#1a1035 0%,#0d0d1a 60%,#050508 100%);
+  display:flex;flex-direction:column;align-items:center;justify-content:flex-start;
+  padding:30px 20px 60px;
+  font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display','Segoe UI',sans-serif;
+  color:#f0f0f0;
+  overflow-x:hidden;
+}
+
+/* floating particles bg */
+body::before{
+  content:'';position:fixed;inset:0;pointer-events:none;
+  background:
+    radial-gradient(circle at 20% 30%,rgba(58,134,255,.08) 0%,transparent 50%),
+    radial-gradient(circle at 80% 70%,rgba(131,56,236,.07) 0%,transparent 50%);
+}
+
+h1{font-size:28px;font-weight:700;margin-bottom:6px;
+   background:linear-gradient(90deg,#3a86ff,#8338ec,#ff006e);
+   -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.subtitle{font-size:14px;color:rgba(255,255,255,.4);margin-bottom:36px}
+
+/* ── PHONE SHELL ─────────────────────────────────────── */
+:root{
+  --acc:#3a86ff;--grn:#2ecc71;--red:#e74c3c;--ylw:#f39c12;--pur:#8338ec;
+  --bg0:#0d0d0d;--bg1:#1a1a1a;--bg2:#252525;--bg3:#2e2e2e;
+  --t1:#f0f0f0;--t2:#9a9a9a;
+  --bdr:rgba(255,255,255,.07);
+  --r:16px;--rs:8px;
+  --trans:.22s cubic-bezier(.4,0,.2,1);
+}
+
+#phone{
+  width:375px;height:812px;
+  background:var(--bg0);
+  border-radius:52px;
+  border:1.5px solid rgba(255,255,255,.13);
+  box-shadow:
+    0 0 0 10px #101010,
+    0 0 0 11px rgba(255,255,255,.06),
+    0 40px 80px rgba(0,0,0,.8),
+    0 0 120px rgba(58,134,255,.12);
+  position:relative;overflow:hidden;
+  display:flex;flex-direction:column;
+  flex-shrink:0;
+}
+
+/* notch / dynamic island */
+#island{
+  position:absolute;top:12px;left:50%;transform:translateX(-50%);
+  background:#000;border-radius:22px;
+  height:34px;width:126px;
+  z-index:300;display:flex;align-items:center;justify-content:center;
+  transition:all .45s cubic-bezier(.22,1,.36,1);overflow:hidden;
+  box-shadow:0 0 0 1.5px rgba(255,255,255,.06);
+}
+#island.expand{width:240px;height:44px;background:#121212}
+#island-txt{font-size:12px;color:#fff;padding:0 14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* side buttons */
+#phone::before{
+  content:'';position:absolute;left:-3px;top:160px;
+  width:3px;height:36px;background:#1c1c1e;border-radius:3px 0 0 3px;
+  box-shadow:0 48px 0 #1c1c1e,0 84px 0 #1c1c1e;
+}
+#phone::after{
+  content:'';position:absolute;right:-3px;top:200px;
+  width:3px;height:68px;background:#1c1c1e;border-radius:0 3px 3px 0;
+}
+
+/* ── STATUS BAR ──────────────────────────────────────── */
+#sb{
+  position:relative;z-index:10;
+  display:flex;justify-content:space-between;align-items:center;
+  padding:15px 22px 2px;font-size:12px;font-weight:600;color:var(--t1);
+  pointer-events:none;flex-shrink:0;
+}
+#sb-icons{display:flex;gap:6px;align-items:center}
+.bat{
+  position:relative;display:inline-flex;align-items:center;
+  width:27px;height:13px;border:1.5px solid var(--t1);border-radius:3px;
+}
+.bat::after{content:'';position:absolute;right:-5px;width:3px;height:6px;background:var(--t1);border-radius:0 2px 2px 0}
+#bat-fill{height:100%;background:var(--grn);border-radius:2px;transition:width .5s}
+.signal{font-size:10px;letter-spacing:-1px}
+
+/* ── SCREENS ─────────────────────────────────────────── */
+.screen{
+  position:absolute;inset:0;display:flex;flex-direction:column;
+  transition:transform .3s cubic-bezier(.4,0,.2,1),opacity .3s;
+}
+.screen.off{opacity:0;pointer-events:none;transform:translateY(8px) scale(.98)}
+.screen.on{opacity:1;pointer-events:all;transform:none}
+
+/* ── LOCK SCREEN ─────────────────────────────────────── */
+#scr-lock{
+  background:linear-gradient(160deg,#0a0a2a,#10102e,#0d1533);
+  align-items:center;justify-content:flex-start;padding-top:70px;gap:0;
+}
+.lk-time{font-size:80px;font-weight:200;color:#fff;letter-spacing:-3px;text-align:center;line-height:1}
+.lk-date{font-size:17px;color:rgba(255,255,255,.65);text-align:center;margin-top:6px}
+.lk-stars{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.star{position:absolute;background:#fff;border-radius:50%;animation:twinkle var(--d,3s) infinite var(--delay,0s)}
+@keyframes twinkle{0%,100%{opacity:.2}50%{opacity:.8}}
+
+.lk-actions{
+  display:flex;flex-direction:column;align-items:center;gap:18px;
+  position:absolute;bottom:80px;width:100%;
+}
+.fp-btn{
+  width:76px;height:76px;border-radius:50%;border:none;
+  background:rgba(255,255,255,.1);backdrop-filter:blur(12px);
+  cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:5px;transition:background var(--trans),transform var(--trans);
+}
+.fp-btn:hover{background:rgba(255,255,255,.18);transform:scale(1.05)}
+.fp-btn svg{width:34px;height:34px;fill:#fff;opacity:.85}
+.fp-btn span{font-size:11px;color:rgba(255,255,255,.7)}
+.pin-btn{
+  background:transparent;border:1px solid rgba(255,255,255,.25);
+  border-radius:22px;padding:9px 28px;color:rgba(255,255,255,.8);
+  font-size:14px;cursor:pointer;transition:background var(--trans);
+}
+.pin-btn:hover{background:rgba(255,255,255,.1)}
+
+/* notifications on lock */
+.lock-notif{
+  position:absolute;top:260px;width:calc(100% - 32px);left:16px;
+  display:flex;flex-direction:column;gap:8px;
+}
+.ln-item{
+  background:rgba(255,255,255,.1);backdrop-filter:blur(16px);
+  border-radius:16px;padding:12px 16px;display:flex;align-items:center;gap:10px;
+  border:1px solid rgba(255,255,255,.06);
+}
+.ln-icon{font-size:20px}
+.ln-body{flex:1}
+.ln-title{font-size:13px;font-weight:600;color:#fff}
+.ln-text{font-size:12px;color:rgba(255,255,255,.6)}
+.ln-time{font-size:11px;color:rgba(255,255,255,.4)}
+
+/* ── HOME SCREEN ─────────────────────────────────────── */
+#scr-home{
+  background:linear-gradient(160deg,#0f0f2a,#14143a,#0d1040);
+  flex-direction:column;
+}
+.home-widgets{
+  position:relative;z-index:1;padding:56px 14px 8px;
+  display:flex;gap:8px;
+}
+.w-clock{
+  flex:1.6;background:rgba(255,255,255,.08);backdrop-filter:blur(14px);
+  border-radius:var(--r);padding:14px 16px;
+  border:1px solid rgba(255,255,255,.07);
+}
+.w-clock-time{font-size:32px;font-weight:200;color:#fff}
+.w-clock-date{font-size:12px;color:rgba(255,255,255,.55);margin-top:2px}
+.w-weather{
+  flex:1;background:rgba(255,255,255,.08);backdrop-filter:blur(14px);
+  border-radius:var(--r);padding:14px 12px;
+  border:1px solid rgba(255,255,255,.07);
+  display:flex;flex-direction:column;justify-content:center;
+  align-items:center;gap:4px;
+}
+.w-weather-temp{font-size:22px;font-weight:300;color:#fff}
+.w-weather-desc{font-size:11px;color:rgba(255,255,255,.55)}
+
+/* app grid */
+.app-grid{
+  position:relative;z-index:1;flex:1;
+  display:grid;grid-template-columns:repeat(4,1fr);
+  gap:18px 6px;padding:10px 12px 0;
+  overflow-y:auto;scrollbar-width:none;
+}
+.app-grid::-webkit-scrollbar{display:none}
+
+.app-ic{
+  display:flex;flex-direction:column;align-items:center;gap:5px;
+  cursor:pointer;position:relative;
+}
+.app-ic-img{
+  width:58px;height:58px;border-radius:16px;
+  display:flex;align-items:center;justify-content:center;font-size:26px;
+  box-shadow:0 4px 14px rgba(0,0,0,.4);transition:transform var(--trans);
+  background:var(--bg2);position:relative;
+}
+.app-ic:active .app-ic-img,.app-ic:hover .app-ic-img{transform:scale(.92)}
+.app-ic>span{font-size:10.5px;color:rgba(255,255,255,.85);text-shadow:0 1px 4px #000}
+.bdg{
+  position:absolute;top:-4px;right:-4px;background:var(--red);color:#fff;
+  border-radius:9px;min-width:18px;height:18px;font-size:11px;font-weight:700;
+  display:flex;align-items:center;justify-content:center;padding:0 4px;
+  border:2px solid var(--bg0);
+}
+
+/* gradient icon backgrounds */
+.ic-phone  {background:linear-gradient(135deg,#30d158,#25a644)}
+.ic-msg    {background:linear-gradient(135deg,#30d158,#25a644)}
+.ic-contact{background:linear-gradient(135deg,#6e6e73,#48484a)}
+.ic-camera {background:linear-gradient(135deg,#636366,#48484a)}
+.ic-bank   {background:linear-gradient(135deg,#0a84ff,#0066cc)}
+.ic-crypto {background:linear-gradient(135deg,#ff9f0a,#cc7a00)}
+.ic-market {background:linear-gradient(135deg,#ff375f,#c4002f)}
+.ic-email  {background:linear-gradient(135deg,#0a84ff,#0055b3)}
+.ic-cat    {background:linear-gradient(135deg,#1da1f2,#0d8bd9)}
+.ic-insta  {background:linear-gradient(135deg,#f09433,#e6683c,#dc2743,#cc2366,#bc1888)}
+.ic-tik    {background:linear-gradient(135deg,#111,#69c9d0)}
+.ic-flirt  {background:linear-gradient(135deg,#fd267a,#ff6036)}
+.ic-gps    {background:linear-gradient(135deg,#0a84ff,#0055b3)}
+.ic-garage {background:linear-gradient(135deg,#636366,#3a3a3c)}
+.ic-gallery{background:linear-gradient(135deg,#bf5af2,#9b45cc)}
+.ic-music  {background:linear-gradient(135deg,#fc3c44,#b2001b)}
+.ic-taxi   {background:linear-gradient(135deg,#ffd60a,#c9a900)}
+.ic-dark   {background:linear-gradient(135deg,#1c1c1e,#3a3a3c)}
+.ic-mdt    {background:linear-gradient(135deg,#0062cc,#003f85)}
+.ic-set    {background:linear-gradient(135deg,#636366,#48484a)}
+
+/* dock */
+.dock{
+  position:relative;z-index:1;display:flex;justify-content:space-around;align-items:center;
+  background:rgba(255,255,255,.1);backdrop-filter:blur(20px);
+  border-radius:28px;margin:8px 14px 20px;padding:12px 6px;
+  border:1px solid rgba(255,255,255,.07);
+}
+.dock-ic{
+  width:58px;height:58px;border-radius:16px;
+  display:flex;align-items:center;justify-content:center;font-size:26px;
+  cursor:pointer;transition:transform var(--trans);
+}
+.dock-ic:hover{transform:scale(.9)}
+
+/* ── APP SCREENS ─────────────────────────────────────── */
+.app-screen{
+  position:absolute;inset:0;background:var(--bg0);
+  display:flex;flex-direction:column;overflow:hidden;
+  transition:transform .28s cubic-bezier(.4,0,.2,1),opacity .28s;
+}
+.app-screen.hidden{opacity:0;transform:translateX(100%);pointer-events:none}
+
+.app-hdr{
+  display:flex;align-items:center;padding:52px 16px 13px;
+  background:rgba(13,13,13,.9);backdrop-filter:blur(20px);
+  border-bottom:1px solid var(--bdr);flex-shrink:0;gap:8px;
+  position:relative;z-index:5;
+}
+.app-hdr h2{flex:1;font-size:17px;font-weight:600;color:var(--t1)}
+.btn-back{background:none;border:none;color:var(--acc);font-size:26px;cursor:pointer;line-height:1;padding:0 4px}
+.app-hdr button:not(.btn-back){background:none;border:none;color:var(--acc);font-size:19px;cursor:pointer;padding:4px 8px}
+
+/* tabs */
+.tabs{display:flex;border-bottom:1px solid var(--bdr);background:var(--bg0);flex-shrink:0}
+.tab{flex:1;background:none;border:none;color:var(--t2);padding:10px;cursor:pointer;
+     font-size:13px;font-weight:500;border-bottom:2px solid transparent;transition:all var(--trans)}
+.tab.on{color:var(--acc);border-bottom-color:var(--acc)}
+.tab-pane{display:none;flex:1;overflow-y:auto;flex-direction:column}
+.tab-pane.on{display:flex}
+
+/* ── PHONE DIALER ────────────────────────────────────── */
+#dial-num{
+  text-align:center;font-size:36px;color:var(--t1);
+  letter-spacing:5px;padding:24px 16px 8px;min-height:76px;
+}
+.dialpad{
+  display:grid;grid-template-columns:repeat(3,1fr);
+  gap:1px;background:var(--bdr);margin:8px 14px;
+  border-radius:var(--r);overflow:hidden;
+}
+.dialpad button{
+  background:var(--bg2);border:none;color:var(--t1);padding:16px;font-size:20px;
+  cursor:pointer;position:relative;transition:background var(--trans);
+}
+.dialpad button sub{font-size:8px;color:var(--t2);position:absolute;bottom:5px;left:50%;transform:translateX(-50%)}
+.dialpad button:hover{background:var(--bg3)}
+.dialpad button:active{background:var(--acc);color:#fff}
+.call-btn{
+  display:block;margin:10px auto;background:var(--grn);border:none;border-radius:50%;
+  width:66px;height:66px;font-size:28px;cursor:pointer;
+  box-shadow:0 4px 20px rgba(46,204,113,.35);transition:transform var(--trans);
+}
+.call-btn:hover{transform:scale(1.08)}
+.call-hist{list-style:none;overflow-y:auto;flex:1}
+.ch-item{
+  display:flex;align-items:center;padding:12px 16px;
+  border-bottom:1px solid var(--bdr);gap:10px;cursor:pointer;
+}
+.ch-icon{font-size:18px;width:28px;text-align:center}
+.ch-info{flex:1}
+.ch-name{font-size:14px;color:var(--t1)}
+.ch-sub{font-size:12px;color:var(--t2)}
+.ch-dur{font-size:12px;color:var(--t2)}
+
+/* ── MESSAGES ────────────────────────────────────────── */
+.thread-item{
+  display:flex;align-items:center;padding:12px 16px;
+  border-bottom:1px solid var(--bdr);gap:11px;cursor:pointer;
+  transition:background var(--trans);
+}
+.thread-item:hover{background:var(--bg1)}
+.t-av{
+  width:46px;height:46px;border-radius:50%;background:var(--acc);
+  display:flex;align-items:center;justify-content:center;font-size:18px;
+  font-weight:700;color:#fff;flex-shrink:0;
+}
+.t-info{flex:1;min-width:0}
+.t-name{font-size:15px;font-weight:500;color:var(--t1)}
+.t-prev{font-size:13px;color:var(--t2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.t-meta{display:flex;flex-direction:column;align-items:flex-end;gap:4px}
+.t-time{font-size:11px;color:var(--t2)}
+.t-bdg{
+  background:var(--acc);color:#fff;border-radius:9px;min-width:18px;height:18px;
+  font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 4px;
+}
+
+/* ── BANK ────────────────────────────────────────────── */
+.bank-card{
+  background:linear-gradient(135deg,#0a1628,#0d1f3c,#0a1628);
+  margin:14px;border-radius:20px;padding:22px 20px;
+  box-shadow:0 8px 24px rgba(0,0,0,.5);
+  border:1px solid rgba(58,134,255,.15);
+  position:relative;overflow:hidden;
+}
+.bank-card::before{
+  content:'';position:absolute;inset:0;
+  background:radial-gradient(circle at 70% 30%,rgba(58,134,255,.1) 0%,transparent 60%);
+}
+.bc-label{font-size:11px;color:rgba(255,255,255,.45);text-transform:uppercase;letter-spacing:1px;position:relative}
+.bc-amount{font-size:38px;font-weight:200;color:#fff;margin:4px 0 16px;position:relative;letter-spacing:-1px}
+.bc-amount.cash{color:var(--grn);font-size:28px;margin-bottom:0}
+.bank-iban{font-size:11px;color:rgba(255,255,255,.3);position:relative;margin-top:12px;letter-spacing:2px}
+.bank-actions{display:flex;gap:8px;padding:0 14px 12px}
+.ba-btn{
+  flex:1;background:var(--bg2);border:none;border-radius:10px;
+  padding:12px;color:var(--t1);cursor:pointer;font-size:13px;
+  font-weight:500;transition:background var(--trans);
+}
+.ba-btn:hover{background:var(--acc);color:#fff}
+.tx-item{
+  display:flex;align-items:center;padding:12px 16px;
+  border-bottom:1px solid var(--bdr);gap:12px;
+}
+.tx-icon{
+  width:40px;height:40px;border-radius:50%;background:var(--bg2);
+  display:flex;align-items:center;justify-content:center;font-size:18px;
+}
+.tx-info{flex:1}
+.tx-name{font-size:14px;color:var(--t1)}
+.tx-date{font-size:12px;color:var(--t2)}
+.tx-amt{font-size:15px;font-weight:600}
+.tx-amt.neg{color:var(--red)}.tx-amt.pos{color:var(--grn)}
+
+/* ── CRYPTO ─────────────────────────────────────────── */
+.cr-header{
+  background:linear-gradient(135deg,#1a1a0a,#2a2a0a);
+  margin:14px;border-radius:var(--r);padding:16px;
+  border:1px solid rgba(255,159,10,.12);
+}
+.cr-total-label{font-size:11px;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:1px}
+.cr-total{font-size:32px;font-weight:200;color:#fff;margin:4px 0 2px}
+.cr-change{font-size:13px;color:var(--grn)}
+.cr-row{
+  display:flex;align-items:center;padding:12px 16px;
+  border-bottom:1px solid var(--bdr);gap:12px;cursor:pointer;
+  transition:background var(--trans);
+}
+.cr-row:hover{background:var(--bg1)}
+.cr-coin-icon{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700}
+.cr-coin-btc{background:linear-gradient(135deg,#f7931a,#e8841a);color:#fff}
+.cr-coin-eth{background:linear-gradient(135deg,#627eea,#4a63cc);color:#fff}
+.cr-coin-xmr{background:linear-gradient(135deg,#ff6600,#cc4400);color:#fff}
+.cr-coin-apc{background:linear-gradient(135deg,#3a86ff,#2a66df);color:#fff}
+.cr-coin-info{flex:1}
+.cr-coin-name{font-size:14px;color:var(--t1);font-weight:500}
+.cr-coin-sym{font-size:12px;color:var(--t2)}
+.cr-price{text-align:right}
+.cr-price-val{font-size:14px;color:var(--t1);font-weight:500}
+.cr-change-sm{font-size:12px}.cr-up{color:var(--grn)}.cr-dn{color:var(--red)}
+
+/* ── SOCIAL FEED ─────────────────────────────────────── */
+.feed{flex:1;overflow-y:auto;padding:8px 0}
+.post{background:var(--bg2);margin:8px 12px;border-radius:var(--r);padding:14px;border:1px solid var(--bdr)}
+.post-hdr{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.post-av{
+  width:38px;height:38px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  font-weight:700;font-size:16px;color:#fff;flex-shrink:0;
+}
+.post-av-1{background:linear-gradient(135deg,#3a86ff,#2a66df)}
+.post-av-2{background:linear-gradient(135deg,#ff006e,#c00057)}
+.post-av-3{background:linear-gradient(135deg,#8338ec,#6328cc)}
+.post-av-4{background:linear-gradient(135deg,#fb5607,#d44000)}
+.post-meta{flex:1}
+.post-name{font-size:14px;font-weight:600;color:var(--t1)}
+.post-handle{font-size:12px;color:var(--t2)}
+.post-time{font-size:11px;color:var(--t2)}
+.post-body{font-size:14px;color:var(--t1);line-height:1.5;word-break:break-word}
+.post-img{
+  width:100%;border-radius:var(--rs);margin-top:10px;
+  background:linear-gradient(135deg,#1a1a2e,#16213e);
+  height:160px;display:flex;align-items:center;justify-content:center;
+  font-size:32px;border:1px solid var(--bdr);
+}
+.post-actions{display:flex;gap:20px;margin-top:12px}
+.pa-btn{background:none;border:none;color:var(--t2);font-size:13px;cursor:pointer;
+        display:flex;align-items:center;gap:5px;transition:color var(--trans)}
+.pa-btn:hover{color:var(--acc)}
+.pa-btn.liked{color:var(--red)}
+.pa-like-count{font-size:12px}
+
+/* ── DARK WEB ────────────────────────────────────────── */
+.dw-bg{background:#050505}
+.dw-hdr h2{color:#39ff14!important;font-family:'Courier New',monospace}
+.dw-item{
+  background:#0a0a0a;border:1px solid #222;border-radius:var(--rs);
+  padding:12px;margin-bottom:8px;display:flex;align-items:center;gap:12px;
+}
+.dw-name{flex:1;color:#39ff14;font-family:monospace;font-size:13px}
+.dw-price{color:#ff9900;font-weight:700;font-size:14px;font-family:monospace}
+.dw-buy{
+  background:#111;border:1px solid #444;border-radius:6px;
+  color:#aaa;padding:6px 12px;cursor:pointer;font-size:12px;
+  transition:background .15s,color .15s;
+}
+.dw-buy:hover{background:#1a2a1a;color:#39ff14;border-color:#39ff14}
+
+.dw-chat-msg{
+  padding:4px 0;font-family:monospace;font-size:12px;
+  border-bottom:1px solid rgba(255,255,255,.04);
+}
+.dw-from{color:#39ff14}.dw-txt{color:#666}
+
+/* ── GPS ─────────────────────────────────────────────── */
+.gps-map{
+  flex:1;background:linear-gradient(160deg,#061a06,#0a2a0a,#061a06);
+  position:relative;display:flex;align-items:center;justify-content:center;
+  overflow:hidden;
+}
+.gps-grid{
+  position:absolute;inset:0;
+  background-image:linear-gradient(rgba(46,204,113,.07) 1px,transparent 1px),
+                   linear-gradient(90deg,rgba(46,204,113,.07) 1px,transparent 1px);
+  background-size:30px 30px;
+}
+.gps-blip{font-size:28px;animation:blip 2s infinite}
+@keyframes blip{0%,100%{transform:scale(1);filter:drop-shadow(0 0 6px #2ecc71)}
+                50%{transform:scale(1.25);filter:drop-shadow(0 0 14px #2ecc71)}}
+.gps-marker{position:absolute;font-size:20px;animation:blip 3s infinite}
+.gps-panel{background:var(--bg0);padding:12px 16px;flex-shrink:0}
+.gps-share-item{
+  display:flex;align-items:center;padding:8px 0;
+  border-bottom:1px solid var(--bdr);gap:10px;
+  font-size:13px;color:var(--t1);
+}
+
+/* ── SETTINGS ────────────────────────────────────────── */
+.set-list{flex:1;overflow-y:auto;padding-bottom:20px}
+.set-sec h4{
+  font-size:12px;color:var(--t2);text-transform:uppercase;
+  letter-spacing:1px;padding:16px 16px 8px;
+}
+.set-row{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:13px 16px;border-bottom:1px solid var(--bdr);
+  background:var(--bg2);font-size:15px;color:var(--t1);gap:8px;
+}
+.set-row select,.set-row input{
+  background:var(--bg0);border:1px solid var(--bdr);border-radius:6px;
+  padding:5px 9px;color:var(--t1);font-size:13px;outline:none;
+}
+.set-row span:last-child:not(input):not(select){font-size:13px;color:var(--t2)}
+.toggle{position:relative;display:inline-block;width:46px;height:26px;cursor:pointer}
+.toggle input{opacity:0;width:0;height:0}
+.slider{
+  position:absolute;inset:0;background:var(--bg3);border-radius:26px;transition:background var(--trans);
+}
+.slider::before{
+  content:'';position:absolute;height:20px;width:20px;left:3px;bottom:3px;
+  background:#fff;border-radius:50%;transition:transform var(--trans);
+}
+.toggle input:checked+.slider{background:var(--acc)}
+.toggle input:checked+.slider::before{transform:translateX(20px)}
+.set-save{
+  display:block;width:calc(100% - 28px);margin:14px;
+  background:var(--acc);border:none;border-radius:var(--r);
+  padding:14px;color:#fff;font-size:16px;font-weight:600;cursor:pointer;
+  transition:background var(--trans);
+}
+.set-save:hover{background:#2a76ef}
+
+/* ── NAV BAR ─────────────────────────────────────────── */
+#nav{
+  flex-shrink:0;display:flex;justify-content:space-around;align-items:center;
+  padding:6px 0 18px;background:var(--bg0);border-top:1px solid var(--bdr);
+  position:relative;z-index:10;
+}
+#nav button{
+  background:none;border:none;color:var(--t2);font-size:20px;cursor:pointer;
+  padding:6px 20px;border-radius:10px;transition:background var(--trans),color var(--trans);
+}
+#nav button:hover{background:var(--bg2);color:var(--t1)}
+
+/* ── TOAST ───────────────────────────────────────────── */
+#toasts{
+  position:absolute;top:58px;left:50%;transform:translateX(-50%);
+  width:88%;z-index:9000;pointer-events:none;
+  display:flex;flex-direction:column;gap:6px;
+}
+.toast{
+  background:rgba(30,30,35,.95);backdrop-filter:blur(20px);
+  border-radius:14px;padding:11px 14px;
+  display:flex;align-items:center;gap:9px;
+  box-shadow:0 4px 20px rgba(0,0,0,.5);
+  border-left:3px solid var(--acc);
+  animation:tin .3s cubic-bezier(.22,1,.36,1);
+  pointer-events:all;cursor:pointer;
+}
+.toast.s{border-color:var(--grn)}.toast.e{border-color:var(--red)}
+.toast.w{border-color:var(--ylw)}.toast.m{border-color:var(--acc)}
+@keyframes tin{from{transform:translateY(-16px);opacity:0}to{transform:none;opacity:1}}
+@keyframes tout{from{transform:none;opacity:1}to{transform:translateX(110%);opacity:0}}
+.t-ico{font-size:20px}
+.t-body{flex:1}
+.t-ttl{font-size:13px;font-weight:600;color:#fff}
+.t-msg{font-size:12px;color:rgba(255,255,255,.65)}
+
+/* ── INCOMING CALL ───────────────────────────────────── */
+#overlay-call{
+  position:absolute;inset:0;background:linear-gradient(160deg,#0a2a0a,#0d200d);
+  z-index:100;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:14px;
+  opacity:0;pointer-events:none;transition:opacity .3s;
+}
+#overlay-call.show{opacity:1;pointer-events:all}
+.oc-avatar{font-size:88px;animation:ring 2s infinite}
+@keyframes ring{0%,100%{transform:rotate(-8deg)}50%{transform:rotate(8deg)}}
+.oc-name{font-size:30px;font-weight:300;color:#fff}
+.oc-sub{font-size:15px;color:rgba(255,255,255,.5)}
+.oc-btns{display:flex;gap:60px;margin-top:24px}
+.oc-dec,.oc-ans{border:none;border-radius:50%;width:68px;height:68px;font-size:28px;cursor:pointer}
+.oc-dec{background:var(--red);box-shadow:0 4px 20px rgba(231,76,60,.4)}
+.oc-ans{background:var(--grn);box-shadow:0 4px 20px rgba(46,204,113,.4)}
+.oc-pulse{
+  position:absolute;border-radius:50%;background:rgba(46,204,113,.1);
+  animation:pulse-ring 2s infinite;
+}
+@keyframes pulse-ring{0%{width:80px;height:80px;opacity:.5}100%{width:250px;height:250px;opacity:0}}
+
+/* ── GALLERY GRID ───────────────────────────────────── */
+.gal-grid{
+  display:grid;grid-template-columns:repeat(3,1fr);gap:2px;flex:1;overflow-y:auto;
+}
+.gal-thumb{
+  aspect-ratio:1;background:var(--bg2);display:flex;align-items:center;
+  justify-content:center;font-size:28px;cursor:pointer;overflow:hidden;
+  transition:filter var(--trans);
+}
+.gal-thumb:hover{filter:brightness(1.2)}
+
+/* ── MUSIC PLAYER ───────────────────────────────────── */
+.music-art{
+  width:160px;height:160px;border-radius:20px;margin:20px auto 0;
+  display:flex;align-items:center;justify-content:center;font-size:64px;
+  background:linear-gradient(135deg,#1c1c2e,#2a1a3e);
+  box-shadow:0 12px 40px rgba(0,0,0,.6);
+  animation:rotate 8s linear infinite paused;
+}
+.music-art.playing{animation-play-state:running}
+@keyframes rotate{from{transform:rotate(0)}to{transform:rotate(360deg)}}
+.music-title{font-size:20px;font-weight:600;color:var(--t1);text-align:center;margin-top:16px;padding:0 20px}
+.music-artist{font-size:14px;color:var(--t2);text-align:center;margin-top:4px}
+.progress-bar{
+  height:4px;background:var(--bg2);border-radius:2px;
+  margin:16px 20px 0;overflow:hidden;
+}
+.progress-fill{height:100%;background:linear-gradient(90deg,var(--acc),var(--pur));border-radius:2px;transition:width .3s}
+.music-time{display:flex;justify-content:space-between;padding:4px 20px 0;font-size:11px;color:var(--t2)}
+.music-ctrls{display:flex;gap:24px;align-items:center;justify-content:center;padding:16px}
+.mc-btn{background:none;border:none;color:var(--t2);font-size:24px;cursor:pointer;transition:color var(--trans)}
+.mc-btn:hover{color:var(--t1)}
+#mc-play{
+  background:var(--t1);border-radius:50%;width:58px;height:58px;
+  font-size:22px;display:flex;align-items:center;justify-content:center;
+  color:#000;cursor:pointer;border:none;transition:transform var(--trans);
+}
+#mc-play:hover{transform:scale(1.08)}
+.playlist{list-style:none;overflow-y:auto;flex:1}
+.pl-item{
+  display:flex;align-items:center;padding:10px 16px;border-bottom:1px solid var(--bdr);
+  gap:12px;cursor:pointer;transition:background var(--trans);
+}
+.pl-item:hover{background:var(--bg1)}
+.pl-item.playing{color:var(--acc)}
+.pl-num{width:22px;text-align:center;font-size:13px;color:var(--t2)}
+.pl-title{flex:1;font-size:14px;color:var(--t1)}
+.pl-dur{font-size:12px;color:var(--t2)}
+
+/* ── CONTACTS ────────────────────────────────────────── */
+.cnt-search{
+  margin:10px 14px;padding:10px 14px;background:var(--bg2);border:none;
+  border-radius:10px;color:var(--t1);font-size:14px;outline:none;width:calc(100% - 28px);
+}
+.cnt-list{list-style:none;overflow-y:auto;flex:1}
+.cnt-item{
+  display:flex;align-items:center;padding:12px 16px;
+  border-bottom:1px solid var(--bdr);gap:12px;cursor:pointer;
+  transition:background var(--trans);
+}
+.cnt-item:hover{background:var(--bg1)}
+.cnt-av{
+  width:44px;height:44px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  font-weight:600;font-size:18px;color:#fff;flex-shrink:0;
+}
+.cnt-info{flex:1}
+.cnt-name{font-size:15px;color:var(--t1);font-weight:500}
+.cnt-num{font-size:13px;color:var(--t2)}
+.cnt-acts{display:flex;gap:6px}
+.cnt-acts button{background:none;border:none;font-size:18px;cursor:pointer;padding:4px}
+
+/* MDT */
+.mdt-row{display:flex;justify-content:space-between;margin-bottom:8px;font-size:13px}
+.mdt-label{color:var(--t2)}.mdt-value{color:var(--t1);font-weight:500}
+.mdt-flagged{color:var(--red)!important;font-weight:700}
+.mdt-badge{
+  display:inline-block;padding:2px 8px;border-radius:6px;
+  font-size:11px;font-weight:700;
+}
+.badge-red{background:rgba(231,76,60,.2);color:var(--red)}
+.badge-grn{background:rgba(46,204,113,.2);color:var(--grn)}
+
+/* ── PAGE CONTROLS ───────────────────────────────────── */
+.pg-controls{
+  display:flex;gap:12px;margin-bottom:24px;flex-wrap:wrap;justify-content:center;
+}
+.pg-btn{
+  background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);
+  border-radius:10px;padding:9px 18px;color:#fff;cursor:pointer;font-size:13px;
+  transition:background .2s,border-color .2s;
+}
+.pg-btn:hover{background:rgba(58,134,255,.2);border-color:rgba(58,134,255,.4)}
+.pg-btn.active-pg{background:rgba(58,134,255,.3);border-color:var(--acc)}
+.info-txt{color:rgba(255,255,255,.35);font-size:13px;margin-top:20px;text-align:center;max-width:440px}
+
+/* cracked */
+#cracked{position:absolute;inset:0;pointer-events:none;z-index:500;display:none;
+  background:
+    linear-gradient(rgba(255,255,255,.3),rgba(255,255,255,.3))
+    0 0 / 1px 100% no-repeat,
+    linear-gradient(45deg,rgba(255,255,255,.2),rgba(255,255,255,.2))
+    40% 30% / 120px 200px no-repeat;
+  filter:drop-shadow(0 0 2px rgba(255,255,255,.6));
+}
+</style>
+</head>
+<body>
+
+<h1>ApexPhone v3.0</h1>
+<p class="subtitle">Interactive UI Preview — kliknij przyciski ekranu startowego</p>
+
+<!-- ── SCREEN SELECTOR ──────────────────────────────── -->
+<div class="pg-controls" id="pg-controls">
+  <button class="pg-btn active-pg" onclick="showScreen('lock')">🔒 Lock</button>
+  <button class="pg-btn" onclick="showScreen('home')">🏠 Home</button>
+  <button class="pg-btn" onclick="showApp('phone')">📞 Phone</button>
+  <button class="pg-btn" onclick="showApp('messages')">💬 Messages</button>
+  <button class="pg-btn" onclick="showApp('bank')">🏦 Bank</button>
+  <button class="pg-btn" onclick="showApp('crypto')">₿ Crypto</button>
+  <button class="pg-btn" onclick="showApp('catiter')">🐦 Catiter</button>
+  <button class="pg-btn" onclick="showApp('gallery')">🖼 Gallery</button>
+  <button class="pg-btn" onclick="showApp('gps')">🗺 GPS</button>
+  <button class="pg-btn" onclick="showApp('music')">🎵 Music</button>
+  <button class="pg-btn" onclick="showApp('contacts')">👤 Contacts</button>
+  <button class="pg-btn" onclick="showApp('darkweb')">🌐 DarkWeb</button>
+  <button class="pg-btn" onclick="showApp('mdt')">🔵 MDT</button>
+  <button class="pg-btn" onclick="showApp('settings')">⚙️ Settings</button>
+  <button class="pg-btn" onclick="triggerCall()">📲 Incoming Call</button>
+  <button class="pg-btn" onclick="triggerCrack()">💥 Break Phone</button>
+</div>
+
+<!-- ── PHONE ─────────────────────────────────────────── -->
+<div id="phone">
+
+  <!-- Dynamic Island -->
+  <div id="island"><div id="island-txt"></div></div>
+
+  <!-- Status Bar -->
+  <div id="sb">
+    <span id="sb-time">09:41</span>
+    <div id="sb-icons">
+      <span class="signal">▌▌▌</span>
+      <span>WiFi</span>
+      <div class="bat"><div id="bat-fill" style="width:82%"></div></div>
+    </div>
+  </div>
+
+  <!-- ── LOCK SCREEN ──────────────────────────────── -->
+  <div class="screen on" id="scr-lock">
+    <div class="lk-stars">
+      <div class="star" style="width:2px;height:2px;top:8%;left:15%;--d:4s;--delay:0s"></div>
+      <div class="star" style="width:1px;height:1px;top:20%;left:70%;--d:3s;--delay:.5s"></div>
+      <div class="star" style="width:2px;height:2px;top:40%;left:30%;--d:5s;--delay:1s"></div>
+      <div class="star" style="width:1px;height:1px;top:55%;left:80%;--d:3.5s;--delay:.2s"></div>
+      <div class="star" style="width:2px;height:2px;top:70%;left:50%;--d:4.5s;--delay:.8s"></div>
+      <div class="star" style="width:1px;height:1px;top:85%;left:20%;--d:3s;--delay:1.5s"></div>
+    </div>
+
+    <div style="text-align:center;margin-top:80px">
+      <div class="lk-time" id="lk-time">09:41</div>
+      <div class="lk-date" id="lk-date">Sobota, 17 Maja</div>
+    </div>
+
+    <div class="lock-notif">
+      <div class="ln-item">
+        <div class="ln-icon">💬</div>
+        <div class="ln-body">
+          <div class="ln-title">Marek K.</div>
+          <div class="ln-text">Hej, jesteś na mieście?</div>
+        </div>
+        <div class="ln-time">09:38</div>
+      </div>
+      <div class="ln-item">
+        <div class="ln-icon">🏦</div>
+        <div class="ln-body">
+          <div class="ln-title">Banking</div>
+          <div class="ln-text">Przelew +$2,500 otrzymany</div>
+        </div>
+        <div class="ln-time">09:22</div>
+      </div>
+      <div class="ln-item">
+        <div class="ln-icon">🐦</div>
+        <div class="ln-body">
+          <div class="ln-title">Catiter</div>
+          <div class="ln-text">@Police: Curfew in Strawberry!</div>
+        </div>
+        <div class="ln-time">08:55</div>
+      </div>
+    </div>
+
+    <div class="lk-actions">
+      <button class="fp-btn" onclick="unlockPhone()">
+        <svg viewBox="0 0 24 24"><path d="M12 1C6.5 1 2 5.5 2 11c0 2.4.9 4.6 2.3 6.3L12 23l7.7-5.7C21.1 15.6 22 13.4 22 11c0-5.5-4.5-10-10-10zm0 2c4.4 0 8 3.6 8 8 0 1.9-.7 3.7-1.8 5.1L12 20.4l-6.2-4.3C4.7 14.7 4 12.9 4 11c0-4.4 3.6-8 8-8z"/></svg>
+        <span>Touch ID</span>
+      </button>
+      <button class="pin-btn" onclick="showScreen('home')">Odblokuj PIN</button>
+    </div>
+  </div>
+
+  <!-- ── HOME SCREEN ──────────────────────────────── -->
+  <div class="screen off" id="scr-home">
+    <div class="home-widgets">
+      <div class="w-clock">
+        <div class="w-clock-time" id="wid-time">09:41</div>
+        <div class="w-clock-date">Sob, 17 Maj</div>
+      </div>
+      <div class="w-weather">
+        <div style="font-size:24px">⛅</div>
+        <div class="w-weather-temp">23°</div>
+        <div class="w-weather-desc">Los Santos</div>
+      </div>
+    </div>
+
+    <div class="app-grid">
+      <div class="app-ic" onclick="showApp('phone')">
+        <div class="app-ic-img ic-phone">📞</div>
+        <span>Phone</span>
+      </div>
+      <div class="app-ic" onclick="showApp('messages')">
+        <div class="app-ic-img ic-msg">💬</div>
+        <span>Messages</span><div class="bdg">3</div>
+      </div>
+      <div class="app-ic" onclick="showApp('contacts')">
+        <div class="app-ic-img ic-contact">👤</div><span>Contacts</span>
+      </div>
+      <div class="app-ic" onclick="showApp('gallery')">
+        <div class="app-ic-img ic-camera">📷</div><span>Camera</span>
+      </div>
+      <div class="app-ic" onclick="showApp('bank')">
+        <div class="app-ic-img ic-bank">🏦</div><span>Bank</span>
+      </div>
+      <div class="app-ic" onclick="showApp('crypto')">
+        <div class="app-ic-img ic-crypto">₿</div><span>Crypto</span>
+      </div>
+      <div class="app-ic" onclick="showApp('market')">
+        <div class="app-ic-img ic-market">🛒</div><span>Market</span>
+      </div>
+      <div class="app-ic" onclick="showApp('catiter')">
+        <div class="app-ic-img ic-email">✉️</div><span>Email</span>
+        <div class="bdg">1</div>
+      </div>
+      <div class="app-ic" onclick="showApp('catiter')">
+        <div class="app-ic-img ic-cat">🐦</div><span>Catiter</span>
+      </div>
+      <div class="app-ic" onclick="showApp('catiter')">
+        <div class="app-ic-img ic-insta">📸</div><span>InstaPic</span>
+      </div>
+      <div class="app-ic" onclick="showApp('catiter')">
+        <div class="app-ic-img ic-tik">🎵</div><span>TikTrend</span>
+      </div>
+      <div class="app-ic" onclick="showApp('catiter')">
+        <div class="app-ic-img ic-flirt">❤️</div><span>FlirtDate</span>
+      </div>
+      <div class="app-ic" onclick="showApp('gps')">
+        <div class="app-ic-img ic-gps">🗺️</div><span>GPS</span>
+      </div>
+      <div class="app-ic" onclick="showApp('catiter')">
+        <div class="app-ic-img ic-garage">🚗</div><span>Garage</span>
+      </div>
+      <div class="app-ic" onclick="showApp('gallery')">
+        <div class="app-ic-img ic-gallery">🖼️</div><span>Gallery</span>
+      </div>
+      <div class="app-ic" onclick="showApp('music')">
+        <div class="app-ic-img ic-music">🎧</div><span>Music</span>
+      </div>
+      <div class="app-ic" onclick="showApp('catiter')">
+        <div class="app-ic-img ic-taxi">🚕</div><span>RideX</span>
+      </div>
+      <div class="app-ic" onclick="showApp('darkweb')">
+        <div class="app-ic-img ic-dark">🌐</div><span>TorBrowser</span>
+      </div>
+      <div class="app-ic" onclick="showApp('mdt')">
+        <div class="app-ic-img ic-mdt">🔵</div><span>MDT</span>
+      </div>
+      <div class="app-ic" onclick="showApp('settings')">
+        <div class="app-ic-img ic-set">⚙️</div><span>Settings</span>
+      </div>
+    </div>
+
+    <div class="dock">
+      <div class="dock-ic ic-phone" onclick="showApp('phone')">📞</div>
+      <div class="dock-ic ic-msg"   onclick="showApp('messages')">💬</div>
+      <div class="dock-ic ic-bank"  onclick="showApp('bank')">🏦</div>
+      <div class="dock-ic ic-set"   onclick="showApp('settings')">⚙️</div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════
+       APP SCREENS
+  ═══════════════════════════════════════════════ -->
+
+  <!-- PHONE DIALER -->
+  <div class="app-screen hidden" id="app-phone">
+    <div class="app-hdr">
+      <button class="btn-back" onclick="closeApp()">‹</button>
+      <h2>Telefon</h2>
+    </div>
+    <div class="tabs">
+      <button class="tab on" onclick="switchTab('phone','keypad',this)">Klawiatura</button>
+      <button class="tab"    onclick="switchTab('phone','recent',this)">Ostatnie</button>
+    </div>
+    <div class="tab-pane on" id="phone-keypad">
+      <div id="dial-num"></div>
+      <div class="dialpad">
+        <button onclick="dial('1')">1</button>
+        <button onclick="dial('2')">2<sub>ABC</sub></button>
+        <button onclick="dial('3')">3<sub>DEF</sub></button>
+        <button onclick="dial('4')">4<sub>GHI</sub></button>
+        <button onclick="dial('5')">5<sub>JKL</sub></button>
+        <button onclick="dial('6')">6<sub>MNO</sub></button>
+        <button onclick="dial('7')">7<sub>PQRS</sub></button>
+        <button onclick="dial('8')">8<sub>TUV</sub></button>
+        <button onclick="dial('9')">9<sub>WXYZ</sub></button>
+        <button onclick="dial('*')">*</button>
+        <button onclick="dial('0')">0</button>
+        <button onclick="dialBack()">⌫</button>
+      </div>
+      <button class="call-btn" onclick="makeCall()">📞</button>
+    </div>
+    <div class="tab-pane" id="phone-recent">
+      <ul class="call-hist">
+        <li class="ch-item"><span class="ch-icon" style="color:var(--red)">↙</span><div class="ch-info"><div class="ch-name">Marek K.</div><div class="ch-sub">555 123 456 · Nieodebrany</div></div><div class="ch-dur">09:22</div></li>
+        <li class="ch-item"><span class="ch-icon" style="color:var(--grn)">↗</span><div class="ch-info"><div class="ch-name">Anna W.</div><div class="ch-sub">555 987 321 · Wychodzący</div></div><div class="ch-dur">3:42</div></li>
+        <li class="ch-item"><span class="ch-icon" style="color:var(--acc)">↙</span><div class="ch-info"><div class="ch-name">Boss</div><div class="ch-sub">555 000 001 · Przychodzący</div></div><div class="ch-dur">12:07</div></li>
+        <li class="ch-item"><span class="ch-icon" style="color:var(--grn)">↗</span><div class="ch-info"><div class="ch-name">Dealer</div><div class="ch-sub">555 666 999</div></div><div class="ch-dur">1:15</div></li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- MESSAGES -->
+  <div class="app-screen hidden" id="app-messages">
+    <div class="app-hdr">
+      <button class="btn-back" onclick="closeApp()">‹</button>
+      <h2>Wiadomości</h2>
+      <button>✏️</button>
+    </div>
+    <div class="thread-item" onclick="toast('Otwieranie czatu z Marek K.','m')">
+      <div class="t-av" style="background:linear-gradient(135deg,#3a86ff,#2a66df)">M</div>
+      <div class="t-info"><div class="t-name">Marek K.</div><div class="t-prev">Hej, jesteś na mieście?</div></div>
+      <div class="t-meta"><div class="t-time">09:38</div><div class="t-bdg">2</div></div>
+    </div>
+    <div class="thread-item" onclick="toast('Otwieranie czatu z Anna W.','m')">
+      <div class="t-av" style="background:linear-gradient(135deg,#ff006e,#c00057)">A</div>
+      <div class="t-info"><div class="t-name">Anna W.</div><div class="t-prev">📍 Wysłała Ci swoją lokalizację</div></div>
+      <div class="t-meta"><div class="t-time">09:15</div></div>
+    </div>
+    <div class="thread-item" onclick="toast('Otwieranie czatu z Boss','m')">
+      <div class="t-av" style="background:linear-gradient(135deg,#8338ec,#6328cc)">B</div>
+      <div class="t-info"><div class="t-name">Boss</div><div class="t-prev">Nowe zlecenie — bądź gotowy o 22:00</div></div>
+      <div class="t-meta"><div class="t-time">Wczoraj</div><div class="t-bdg">1</div></div>
+    </div>
+    <div class="thread-item" onclick="toast('Otwieranie czatu z Mechanik','m')">
+      <div class="t-av" style="background:linear-gradient(135deg,#fb5607,#d44000)">🔧</div>
+      <div class="t-info"><div class="t-name">Mechanik 247</div><div class="t-prev">Twoje auto jest gotowe do odbioru</div></div>
+      <div class="t-meta"><div class="t-time">Pon</div></div>
+    </div>
+    <div class="thread-item" onclick="toast('Otwieranie czatu z Anon_7f2a','m')">
+      <div class="t-av" style="background:#1a1a1a;border:1px solid #333">🌐</div>
+      <div class="t-info"><div class="t-name" style="color:#39ff14;font-family:monospace">anon_7f2a</div><div class="t-prev">Dostawa potwierdzona. Skasuj tę wiadomość.</div></div>
+      <div class="t-meta"><div class="t-time">23:01</div></div>
+    </div>
+  </div>
+
+  <!-- BANK -->
+  <div class="app-screen hidden" id="app-bank">
+    <div class="app-hdr">
+      <button class="btn-back" onclick="closeApp()">‹</button>
+      <h2>Banking</h2>
+    </div>
+    <div class="bank-card">
+      <div class="bc-label">Saldo konta</div>
+      <div class="bc-amount">$84,350</div>
+      <div class="bc-label">Gotówka</div>
+      <div class="bc-amount cash">$3,200</div>
+      <div class="bank-iban">IBAN: LS 4900 1234 5678 9012</div>
+    </div>
+    <div class="bank-actions">
+      <button class="ba-btn" onclick="toast('Panel przelewu otwarty','s')">💸 Przelej</button>
+      <button class="ba-btn" onclick="toast('Historia transakcji','s')">📋 Historia</button>
+      <button class="ba-btn" onclick="toast('Faktury: 1 oczekująca','w')">📄 Faktury</button>
+    </div>
+    <div class="tx-item"><div class="tx-icon">💸</div><div class="tx-info"><div class="tx-name">Przelew → Marek K.</div><div class="tx-date">Dziś, 08:30</div></div><div class="tx-amt neg">-$500</div></div>
+    <div class="tx-item"><div class="tx-icon">💰</div><div class="tx-info"><div class="tx-name">Wypłata ze zlecenia</div><div class="tx-date">Wczoraj, 22:00</div></div><div class="tx-amt pos">+$2,500</div></div>
+    <div class="tx-item"><div class="tx-icon">🚗</div><div class="tx-info"><div class="tx-name">Mechanik - naprawa</div><div class="tx-date">Wt, 14:15</div></div><div class="tx-amt neg">-$1,200</div></div>
+    <div class="tx-item"><div class="tx-icon">💰</div><div class="tx-info"><div class="tx-name">Faktura opłacona przez Anna W.</div><div class="tx-date">Pon, 10:00</div></div><div class="tx-amt pos">+$800</div></div>
+  </div>
+
+  <!-- CRYPTO -->
+  <div class="app-screen hidden" id="app-crypto">
+    <div class="app-hdr">
+      <button class="btn-back" onclick="closeApp()">‹</button>
+      <h2>CryptoX</h2>
+    </div>
+    <div class="cr-header">
+      <div class="cr-total-label">Wartość portfela</div>
+      <div class="cr-total" id="cr-total">$12,847.32</div>
+      <div class="cr-change" id="cr-chg">▲ +$340.12 (+2.72%) dziś</div>
+    </div>
+    <div style="flex:1;overflow-y:auto">
+      <div class="cr-row" onclick="toast('BTC: Kup / Sprzedaj','s')">
+        <div class="cr-coin-icon cr-coin-btc">₿</div>
+        <div class="cr-coin-info"><div class="cr-coin-name">Bitcoin</div><div class="cr-coin-sym">BTC · 0.0312</div></div>
+        <div class="cr-price"><div class="cr-price-val" id="btc-p">$29,840</div><div class="cr-change-sm cr-up" id="btc-c">▲ +1.4%</div></div>
+      </div>
+      <div class="cr-row" onclick="toast('ETH: Kup / Sprzedaj','s')">
+        <div class="cr-coin-icon cr-coin-eth">Ξ</div>
+        <div class="cr-coin-info"><div class="cr-coin-name">EtherCoin</div><div class="cr-coin-sym">ETH · 1.82</div></div>
+        <div class="cr-price"><div class="cr-price-val" id="eth-p">$1,995</div><div class="cr-change-sm cr-dn" id="eth-c">▼ -0.8%</div></div>
+      </div>
+      <div class="cr-row" onclick="toast('XMR: Kup / Sprzedaj','s')">
+        <div class="cr-coin-icon cr-coin-xmr">Ɱ</div>
+        <div class="cr-coin-info"><div class="cr-coin-name">MoneroCoin</div><div class="cr-coin-sym">XMR · 5.0</div></div>
+        <div class="cr-price"><div class="cr-price-val" id="xmr-p">$148</div><div class="cr-change-sm cr-up" id="xmr-c">▲ +3.2%</div></div>
+      </div>
+      <div class="cr-row" onclick="toast('APC: Kup / Sprzedaj','s')">
+        <div class="cr-coin-icon cr-coin-apc">A</div>
+        <div class="cr-coin-info"><div class="cr-coin-name">ApexCoin</div><div class="cr-coin-sym">APC · 200</div></div>
+        <div class="cr-price"><div class="cr-price-val" id="apc-p">$487</div><div class="cr-change-sm cr-up" id="apc-c">▲ +5.1%</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SOCIAL (Catiter) -->
+  <div class="app-screen hidden" id="app-catiter">
+    <div class="app-hdr">
+      <button class="btn-back" onclick="closeApp()">‹</button>
+      <h2>🐦 Catiter</h2>
+      <button onclick="toast('Compose tweet','s')">✏️</button>
+    </div>
+    <div class="feed">
+      <div class="post">
+        <div class="post-hdr">
+          <div class="post-av post-av-1">P</div>
+          <div class="post-meta"><div class="post-name">POLICE_LSPD</div><div class="post-handle">@policja_ls</div></div>
+          <div class="post-time">1m</div>
+        </div>
+        <div class="post-body">🚨 UWAGA: Blokada drogi na autostradzie I-5 w kierunku centrum. Prosimy o omijanie rejonu. #LSPD #Bezpieczeństwo</div>
+        <div class="post-actions">
+          <button class="pa-btn" onclick="likePost(this)">♥ <span class="pa-like-count">142</span></button>
+          <button class="pa-btn" onclick="toast('Retweet wysłany','s')">🔁 38</button>
+          <button class="pa-btn" onclick="toast('Komentarz','m')">💬 21</button>
+        </div>
+      </div>
+      <div class="post">
+        <div class="post-hdr">
+          <div class="post-av post-av-2">A</div>
+          <div class="post-meta"><div class="post-name">AnnaWojtyla</div><div class="post-handle">@anna_ls</div></div>
+          <div class="post-time">12m</div>
+        </div>
+        <div class="post-body">Nowy samochód 🚗🔥 Właśnie odebrałam mojego nowego Sultan RS z warsztatu. Mechs w LegendarMotorsport są kosmosami!</div>
+        <div class="post-img">🚗</div>
+        <div class="post-actions">
+          <button class="pa-btn liked" onclick="likePost(this)">♥ <span class="pa-like-count">87</span></button>
+          <button class="pa-btn" onclick="toast('Retweet','s')">🔁 14</button>
+          <button class="pa-btn" onclick="toast('Komentarz','m')">💬 9</button>
+        </div>
+      </div>
+      <div class="post">
+        <div class="post-hdr">
+          <div class="post-av post-av-3">K</div>
+          <div class="post-meta"><div class="post-name">KryptoBoss</div><div class="post-handle">@kb_market</div></div>
+          <div class="post-time">34m</div>
+        </div>
+        <div class="post-body">ApexCoin rośnie jak szalony 📈 Kto kupił w dołku niech wrzuci ❤️ Następny target $600 #APC #Crypto #WAGMI</div>
+        <div class="post-actions">
+          <button class="pa-btn" onclick="likePost(this)">♥ <span class="pa-like-count">203</span></button>
+          <button class="pa-btn" onclick="toast('Retweet','s')">🔁 67</button>
+          <button class="pa-btn" onclick="toast('Komentarz','m')">💬 45</button>
+        </div>
+      </div>
+      <div class="post">
+        <div class="post-hdr">
+          <div class="post-av post-av-4">J</div>
+          <div class="post-meta"><div class="post-name">JanekMechanic</div><div class="post-handle">@janek_wrench</div></div>
+          <div class="post-time">1h</div>
+        </div>
+        <div class="post-body">Warsztat otwarty całą dobę 🔧 Naprawy, tuning, full customizacja. Dzwoń: 555-WRENCH. Lokalizacja: LSIA Hangar B</div>
+        <div class="post-actions">
+          <button class="pa-btn" onclick="likePost(this)">♥ <span class="pa-like-count">31</span></button>
+          <button class="pa-btn" onclick="toast('Retweet','s')">🔁 8</button>
+          <button class="pa-btn" onclick="toast('Komentarz','m')">💬 4</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- GALLERY -->
+  <div class="app-screen hidden" id="app-gallery">
+    <div class="app-hdr">
+      <button class="btn-back" onclick="closeApp()">‹</button>
+      <h2>Galeria</h2>
+      <button onclick="toast('Kamera otwarta','s')">📷</button>
+    </div>
+    <div class="gal-grid">
+      <div class="gal-thumb" onclick="toast('Zdjęcie powiększone','s')">🌆</div>
+      <div class="gal-thumb" onclick="toast('Zdjęcie powiększone','s')">🚗</div>
+      <div class="gal-thumb" onclick="toast('Zdjęcie powiększone','s')">🔫</div>
+      <div class="gal-thumb" onclick="toast('Zdjęcie powiększone','s')">🌅</div>
+      <div class="gal-thumb" onclick="toast('Zdjęcie powiększone','s')">💰</div>
+      <div class="gal-thumb" onclick="toast('Zdjęcie powiększone','s')">🏖</div>
+      <div class="gal-thumb" onclick="toast('Zdjęcie powiększone','s')">🌙</div>
+      <div class="gal-thumb" onclick="toast('Zdjęcie powiększone','s')">🚁</div>
+      <div class="gal-thumb" onclick="toast('Zdjęcie powiększone','s')">🎯</div>
+    </div>
+  </div>
+
+  <!-- GPS -->
+  <div class="app-screen hidden" id="app-gps">
+    <div class="app-hdr">
+      <button class="btn-back" onclick="closeApp()">‹</button>
+      <h2>GPS & Nawigacja</h2>
+    </div>
+    <div class="gps-map">
+      <div class="gps-grid"></div>
+      <div class="gps-blip">◉</div>
+      <div class="gps-marker" style="top:30%;left:40%">📍</div>
+      <div class="gps-marker" style="top:60%;left:65%;animation-delay:.8s">🟢</div>
+      <div class="gps-marker" style="top:45%;left:25%;animation-delay:1.4s">🔴</div>
+    </div>
+    <div class="gps-panel">
+      <button class="ba-btn" style="margin-bottom:8px;width:100%;text-align:left;padding:11px 14px" onclick="toast('Lokalizacja udostępniona — Marek K.','s')">📍 Udostępnij lokalizację</button>
+      <button class="ba-btn" style="margin-bottom:12px;width:100%;text-align:left;padding:11px 14px" onclick="toast('Tracker aktywny — Sultan RS','s')">🚗 GPS Tracker — Sultan RS</button>
+      <div style="font-size:12px;color:var(--t2);margin-bottom:6px">Lokalizacje na żywo:</div>
+      <div class="gps-share-item">🟢 <strong>Anna W.</strong><span style="color:var(--t2);font-size:12px;margin-left:8px">• 320m od Ciebie</span></div>
+      <div class="gps-share-item">🔴 <strong>Boss</strong><span style="color:var(--t2);font-size:12px;margin-left:8px">• 1.2km · Rockford</span></div>
+    </div>
+  </div>
+
+  <!-- MUSIC -->
+  <div class="app-screen hidden" id="app-music">
+    <div class="app-hdr">
+      <button class="btn-back" onclick="closeApp()">‹</button>
+      <h2>Muzyka</h2>
+    </div>
+    <div class="music-art" id="music-art">🎵</div>
+    <div class="music-title" id="music-title">Los Santos Radio</div>
+    <div class="music-artist" id="music-artist">LS FM · Non-Stop</div>
+    <div class="progress-bar"><div class="progress-fill" id="prog" style="width:35%"></div></div>
+    <div class="music-time"><span>1:12</span><span>3:22</span></div>
+    <div class="music-ctrls">
+      <button class="mc-btn" onclick="musicPrev()">⏮</button>
+      <button id="mc-play" onclick="musicToggle()">▶</button>
+      <button class="mc-btn" onclick="musicNext()">⏭</button>
+    </div>
+    <ul class="playlist" id="pl">
+      <li class="pl-item playing" onclick="musicPlay(0,this)"><span class="pl-num">♪</span><span class="pl-title">Los Santos Radio</span><span class="pl-dur">3:22</span></li>
+      <li class="pl-item" onclick="musicPlay(1,this)"><span class="pl-num">2</span><span class="pl-title">Night Drive</span><span class="pl-dur">4:05</span></li>
+      <li class="pl-item" onclick="musicPlay(2,this)"><span class="pl-num">3</span><span class="pl-title">Gangsta Paradise</span><span class="pl-dur">4:02</span></li>
+      <li class="pl-item" onclick="musicPlay(3,this)"><span class="pl-num">4</span><span class="pl-title">Welcome to the City</span><span class="pl-dur">2:58</span></li>
+    </ul>
+  </div>
+
+  <!-- CONTACTS -->
+  <div class="app-screen hidden" id="app-contacts">
+    <div class="app-hdr">
+      <button class="btn-back" onclick="closeApp()">‹</button>
+      <h2>Kontakty</h2>
+      <button onclick="toast('Dodaj nowy kontakt','s')">+</button>
+    </div>
+    <input class="cnt-search" placeholder="Szukaj…" oninput="filterContacts(this.value)"/>
+    <ul class="cnt-list" id="cnt-list">
+      <li class="cnt-item"><div class="cnt-av" style="background:linear-gradient(135deg,#3a86ff,#2a66df)">A</div><div class="cnt-info"><div class="cnt-name">Anna W.</div><div class="cnt-num">555 987 321</div></div><div class="cnt-acts"><button onclick="showApp('phone')">📞</button><button onclick="showApp('messages')">💬</button></div></li>
+      <li class="cnt-item"><div class="cnt-av" style="background:linear-gradient(135deg,#8338ec,#6328cc)">B</div><div class="cnt-info"><div class="cnt-name">Boss</div><div class="cnt-num">555 000 001</div></div><div class="cnt-acts"><button onclick="showApp('phone')">📞</button><button onclick="showApp('messages')">💬</button></div></li>
+      <li class="cnt-item"><div class="cnt-av" style="background:linear-gradient(135deg,#30d158,#25a644)">J</div><div class="cnt-info"><div class="cnt-name">Janek Mechanik</div><div class="cnt-num">555 333 777</div></div><div class="cnt-acts"><button onclick="showApp('phone')">📞</button><button onclick="showApp('messages')">💬</button></div></li>
+      <li class="cnt-item"><div class="cnt-av" style="background:linear-gradient(135deg,#ff375f,#c4002f)">M</div><div class="cnt-info"><div class="cnt-name">Marek K.</div><div class="cnt-num">555 123 456</div></div><div class="cnt-acts"><button onclick="showApp('phone')">📞</button><button onclick="showApp('messages')">💬</button></div></li>
+      <li class="cnt-item"><div class="cnt-av" style="background:linear-gradient(135deg,#ff9f0a,#cc7a00)">P</div><div class="cnt-info"><div class="cnt-name">Pedro Dealer</div><div class="cnt-num">555 666 999</div></div><div class="cnt-acts"><button onclick="showApp('phone')">📞</button><button onclick="showApp('messages')">💬</button></div></li>
+    </ul>
+  </div>
+
+  <!-- DARK WEB -->
+  <div class="app-screen hidden dw-bg" id="app-darkweb">
+    <div class="app-hdr dw-hdr" style="background:#050505;border-bottom:1px solid #222">
+      <button class="btn-back" style="color:#39ff14" onclick="closeApp()">‹</button>
+      <h2>🌐 TorBrowser</h2>
+    </div>
+    <div class="tabs" style="background:#050505;border-bottom:1px solid #222">
+      <button class="tab on" style="color:#39ff14;border-bottom-color:#39ff14" onclick="switchTab('darkweb','dw-mkt',this)">Black Market</button>
+      <button class="tab" style="color:#666"                                    onclick="switchTab('darkweb','dw-cht',this)">Dark Chat</button>
+      <button class="tab" style="color:#666"                                    onclick="switchTab('darkweb','dw-imei',this)">IMEI Hack</button>
+    </div>
+    <div class="tab-pane on" id="dw-mkt" style="padding:10px">
+      <div class="dw-item"><span class="dw-name">🔫 Glock-17</span><span class="dw-price">$2,500</span><button class="dw-buy" onclick="toast('Zakup wysłany...','s')">Kup</button></div>
+      <div class="dw-item"><span class="dw-name">🔒 Lockpick x5</span><span class="dw-price">$300</span><button class="dw-buy" onclick="toast('Zakup wysłany...','s')">Kup</button></div>
+      <div class="dw-item"><span class="dw-name">🌿 Marihuana</span><span class="dw-price">$150</span><button class="dw-buy" onclick="toast('Zakup wysłany...','s')">Kup</button></div>
+      <div class="dw-item"><span class="dw-name">⚡ Ammo 9mm x50</span><span class="dw-price">$50</span><button class="dw-buy" onclick="toast('Zakup wysłany...','s')">Kup</button></div>
+      <div class="dw-item"><span class="dw-name">💊 Cocaine x1</span><span class="dw-price">$800</span><button class="dw-buy" onclick="toast('Zakup wysłany...','s')">Kup</button></div>
+    </div>
+    <div class="tab-pane" id="dw-cht" style="padding:10px;flex-direction:column;gap:8px">
+      <div style="background:#0a0a0a;border:1px solid #1a1a1a;border-radius:8px;padding:10px;flex:1;overflow-y:auto;min-height:180px;font-family:monospace">
+        <div class="dw-chat-msg"><span class="dw-from">anon_7f2a: </span><span class="dw-txt">Dostawa na północy miasta. Godzina 23.</span></div>
+        <div class="dw-chat-msg"><span class="dw-from">ja: </span><span class="dw-txt">Potwierdzam. Będę tam.</span></div>
+        <div class="dw-chat-msg"><span class="dw-from">anon_7f2a: </span><span class="dw-txt">Płatność z góry. Cash only.</span></div>
+        <div class="dw-chat-msg"><span class="dw-from">anon_3b9c: </span><span class="dw-txt">Kto sprzedaje lockpicki?</span></div>
+      </div>
+      <div style="display:flex;gap:6px">
+        <input style="flex:1;background:#111;border:1px solid #333;border-radius:6px;padding:8px 10px;color:#39ff14;font-family:monospace;font-size:12px;outline:none" placeholder="Wiadomość…" id="dw-msg-in"/>
+        <button onclick="dwSend()" style="background:#1a1a1a;border:1px solid #444;border-radius:6px;color:#39ff14;padding:8px 14px;cursor:pointer;font-family:monospace">▶</button>
+      </div>
+    </div>
+    <div class="tab-pane" id="dw-imei" style="padding:14px">
+      <p style="color:#aaa;font-family:monospace;font-size:13px;margin-bottom:10px">Aktualny IMEI:</p>
+      <p style="color:#39ff14;font-family:monospace;font-size:15px;letter-spacing:2px;margin-bottom:16px">490154203237518</p>
+      <p style="color:#666;font-family:monospace;font-size:12px;margin-bottom:14px">Status: <span style="color:var(--red)">OFLAGOWANY przez LSPD</span></p>
+      <button onclick="startIMEIMinigame()" style="width:100%;background:#111;border:1px solid #555;border-radius:8px;color:#ff9900;padding:12px;cursor:pointer;font-family:monospace;font-size:14px">🔓 Sklonuj IMEI ($2,500)</button>
+      <div id="imei-mg" style="display:none;margin-top:16px">
+        <p style="color:#39ff14;font-family:monospace;font-size:12px;margin-bottom:8px">Wpisz kod szyfrujący:</p>
+        <div id="imei-display" style="background:#050505;border:1px solid #333;border-radius:6px;padding:12px;font-family:monospace;font-size:20px;color:#39ff14;letter-spacing:10px;text-align:center;margin-bottom:10px">_ _ _ _ _ _</div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:8px" id="imei-pad"></div>
+        <div style="height:4px;background:#1a1a1a;border-radius:2px;overflow:hidden"><div id="imei-bar" style="height:100%;background:#39ff14;width:100%;transition:width .1s linear"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MDT -->
+  <div class="app-screen hidden" id="app-mdt">
+    <div class="app-hdr" style="background:#0a0f1e;border-bottom:1px solid rgba(0,98,204,.3)">
+      <button class="btn-back" onclick="closeApp()">‹</button>
+      <h2 style="color:#4da6ff">🔵 MDT — Terminal Policji</h2>
+    </div>
+    <div class="tabs" style="background:#0a0f1e;border-bottom:1px solid rgba(0,98,204,.2)">
+      <button class="tab on" style="color:#4da6ff;border-bottom-color:#4da6ff" onclick="switchTab('mdt','mdt-imei',this)">IMEI Lookup</button>
+      <button class="tab"    onclick="switchTab('mdt','mdt-pers',this)">Osoby</button>
+      <button class="tab"    onclick="switchTab('mdt','mdt-disp',this)">Dispatch</button>
+    </div>
+    <div class="tab-pane on" id="mdt-imei" style="padding:16px">
+      <input id="mdt-imei-in" style="width:100%;background:rgba(0,98,204,.1);border:1px solid rgba(0,98,204,.3);border-radius:8px;padding:11px 14px;color:#4da6ff;font-size:14px;outline:none;margin-bottom:10px;font-family:monospace" placeholder="Wpisz IMEI (15 cyfr)…" value="490154203237518"/>
+      <button onclick="mdtSearch()" style="width:100%;background:rgba(0,98,204,.3);border:1px solid rgba(0,98,204,.5);border-radius:8px;padding:12px;color:#4da6ff;cursor:pointer;font-size:14px;margin-bottom:16px">🔍 Szukaj</button>
+      <div id="mdt-result" style="background:rgba(0,20,50,.5);border:1px solid rgba(0,98,204,.2);border-radius:10px;padding:14px;display:none">
+        <div class="mdt-row"><span class="mdt-label">IMEI</span><span class="mdt-value mdt-flagged">490154203237518 🚨</span></div>
+        <div class="mdt-row"><span class="mdt-label">Model</span><span class="mdt-value">ApexPhone Pro</span></div>
+        <div class="mdt-row"><span class="mdt-label">Właściciel</span><span class="mdt-value">Marek Kowalski</span></div>
+        <div class="mdt-row"><span class="mdt-label">Citizen ID</span><span class="mdt-value">QBZ9X14</span></div>
+        <div class="mdt-row"><span class="mdt-label">Status</span><span><span class="mdt-badge badge-red">SKRADZIONY</span></span></div>
+        <div style="margin-top:12px;padding-top:10px;border-top:1px solid rgba(0,98,204,.2)">
+          <div style="font-size:12px;color:rgba(77,166,255,.6);margin-bottom:8px">HISTORIA URZĄDZENIA:</div>
+          <div class="mdt-row"><span class="mdt-label">09:22 · Dziś</span><span class="mdt-value">Zakup — Ammu-Nation Vespucci</span></div>
+          <div class="mdt-row"><span class="mdt-label">23:01 · Wczoraj</span><span class="mdt-value">Oflagowany — zgłoszenie kradzieży</span></div>
+          <div class="mdt-row"><span class="mdt-label">18:34 · Pon</span><span class="mdt-value">IMEI klonowany — Dark Web</span></div>
+        </div>
+        <button onclick="toast('IMEI oflagowany w systemie','w')" style="margin-top:10px;width:100%;background:rgba(231,76,60,.2);border:1px solid rgba(231,76,60,.4);border-radius:8px;padding:10px;color:var(--red);cursor:pointer">🚨 Oflaguj IMEI</button>
+      </div>
+    </div>
+    <div class="tab-pane" id="mdt-pers" style="padding:16px">
+      <input style="width:100%;background:rgba(0,98,204,.1);border:1px solid rgba(0,98,204,.3);border-radius:8px;padding:11px 14px;color:#4da6ff;font-size:14px;outline:none;margin-bottom:10px" placeholder="Imię / Citizen ID…"/>
+      <button onclick="toast('Wyszukiwanie...','s')" style="width:100%;background:rgba(0,98,204,.3);border:1px solid rgba(0,98,204,.5);border-radius:8px;padding:12px;color:#4da6ff;cursor:pointer;font-size:14px">🔍 Szukaj</button>
+    </div>
+    <div class="tab-pane" id="mdt-disp" style="padding:14px">
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <div style="background:rgba(231,76,60,.1);border:1px solid rgba(231,76,60,.3);border-radius:10px;padding:12px">
+          <div style="color:var(--red);font-size:13px;font-weight:600">🚨 CODE-3 — Strzelanina</div>
+          <div style="color:var(--t2);font-size:12px;margin-top:4px">Vinewood · 09:38</div>
+        </div>
+        <div style="background:rgba(255,159,10,.1);border:1px solid rgba(255,159,10,.3);border-radius:10px;padding:12px">
+          <div style="color:var(--ylw);font-size:13px;font-weight:600">⚠️ CODE-2 — Pościg</div>
+          <div style="color:var(--t2);font-size:12px;margin-top:4px">I-5 Freeway · 09:22</div>
+        </div>
+        <div style="background:rgba(46,204,113,.1);border:1px solid rgba(46,204,113,.3);border-radius:10px;padding:12px">
+          <div style="color:var(--grn);font-size:13px;font-weight:600">📋 CODE-1 — Zgłoszenie</div>
+          <div style="color:var(--t2);font-size:12px;margin-top:4px">Strawberry Ave · 09:05</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SETTINGS -->
+  <div class="app-screen hidden" id="app-settings">
+    <div class="app-hdr">
+      <button class="btn-back" onclick="closeApp()">‹</button>
+      <h2>Ustawienia</h2>
+    </div>
+    <div class="set-list">
+      <div class="set-sec"><h4>Urządzenie</h4>
+        <div class="set-row"><span>IMEI</span><span>490154203237518</span></div>
+        <div class="set-row"><span>Numer</span><span>555 741 852</span></div>
+        <div class="set-row"><span>Model</span><span>ApexPhone Pro</span></div>
+        <div class="set-row"><span>Bateria</span><span>82%</span></div>
+      </div>
+      <div class="set-sec"><h4>Wygląd</h4>
+        <div class="set-row"><span>Motyw</span><select onchange="changeTheme(this.value)"><option value="dark">Ciemny</option><option value="light">Jasny</option></select></div>
+        <div class="set-row"><span>Tapeta</span><select><option>Domyślna</option><option>Neon City</option><option>Góry</option><option>Plaża</option></select></div>
+        <div class="set-row"><span>Dzwonek</span><select><option>Domyślny</option><option>Klasyczny</option><option>Wibracje</option></select></div>
+      </div>
+      <div class="set-sec"><h4>Bezpieczeństwo</h4>
+        <div class="set-row"><span>PIN</span><input type="password" placeholder="••••" style="width:80px"/></div>
+        <div class="set-row"><span>Duress PIN</span><input type="password" placeholder="••••" style="width:80px"/></div>
+        <div class="set-row"><span>Touch ID</span><label class="toggle"><input type="checkbox" checked/><span class="slider"></span></label></div>
+      </div>
+      <div class="set-sec"><h4>Łączność</h4>
+        <div class="set-row"><span>Tryb samolotowy</span><label class="toggle"><input type="checkbox" id="airplane-toggle" onchange="toggleAirplane(this.checked)"/><span class="slider"></span></label></div>
+        <div class="set-row"><span>Dynamic Island</span><label class="toggle"><input type="checkbox" checked/><span class="slider"></span></label></div>
+      </div>
+      <div class="set-sec"><h4>Zdalne</h4>
+        <div class="set-row"><span>Zablokuj zdalnie</span><button style="background:var(--acc);border:none;border-radius:6px;padding:6px 12px;color:#fff;cursor:pointer" onclick="toast('Komenda wysłana','s')">Zablokuj</button></div>
+        <div class="set-row"><span>Znajdź telefon</span><button style="background:var(--grn);border:none;border-radius:6px;padding:6px 12px;color:#fff;cursor:pointer" onclick="toast('Lokalizowanie…','s')">Zlokalizuj</button></div>
+        <div class="set-row"><span>Cloud Backup</span><button style="background:var(--bg3);border:none;border-radius:6px;padding:6px 12px;color:var(--t1);cursor:pointer" onclick="toast('Backup zapisany','s')">Backup</button></div>
+      </div>
+      <button class="set-save" onclick="toast('Ustawienia zapisane!','s')">Zapisz ustawienia</button>
+    </div>
+  </div>
+
+  <!-- INCOMING CALL OVERLAY -->
+  <div id="overlay-call">
+    <div class="oc-pulse" style="top:50%;left:50%;transform:translate(-50%,-50%)"></div>
+    <div class="oc-avatar">📱</div>
+    <div class="oc-name" id="oc-name">Marek K.</div>
+    <div class="oc-sub" id="oc-sub">555 123 456 · Przychodzący</div>
+    <div class="oc-btns">
+      <button class="oc-dec" onclick="declineCall()">✖</button>
+      <button class="oc-ans" onclick="answerCall()">📞</button>
+    </div>
+  </div>
+
+  <!-- Cracked overlay -->
+  <div id="cracked"></div>
+
+  <!-- Toast container -->
+  <div id="toasts"></div>
+
+  <!-- Nav bar -->
+  <div id="nav">
+    <button onclick="closeApp()">‹</button>
+    <button onclick="goHome()">⬜</button>
+    <button onclick="goHome()">⌂</button>
+  </div>
+
+</div><!-- #phone -->
+
+<p class="info-txt">
+  Kliknij przyciski u góry lub ikony aplikacji aby nawigować.<br/>
+  Wszystkie animacje, karty, tapety i toasty działają na żywo.
+</p>
+
+<!-- ══════════════════════════════════════════════════════
+     JAVASCRIPT
+══════════════════════════════════════════════════════ -->
+<script>
+'use strict';
+
+// ── Clock ─────────────────────────────────────────────────────
+function tick() {
+  const now = new Date();
+  const h = String(now.getHours()).padStart(2,'0');
+  const m = String(now.getMinutes()).padStart(2,'0');
+  const t = `${h}:${m}`;
+  ['sb-time','lk-time','wid-time'].forEach(id => { const el=document.getElementById(id); if(el) el.textContent=t; });
+}
+setInterval(tick,1000); tick();
+
+// ── Screen navigation ─────────────────────────────────────────
+let currentApp = null;
+
+function showScreen(name) {
+  document.querySelectorAll('.screen').forEach(s=>{ s.classList.remove('on'); s.classList.add('off'); });
+  document.querySelectorAll('.app-screen').forEach(s=>s.classList.add('hidden'));
+  const el = document.getElementById(`scr-${name}`);
+  if(el){ el.classList.remove('off'); el.classList.add('on'); }
+  currentApp = null;
+  updatePgBtn(name);
+}
+
+function showApp(name) {
+  document.querySelectorAll('.screen').forEach(s=>{ s.classList.remove('on'); s.classList.add('off'); });
+  document.querySelectorAll('.app-screen').forEach(s=>s.classList.add('hidden'));
+  const home = document.getElementById('scr-home');
+  home.classList.remove('off'); home.classList.add('on');
+  const app = document.getElementById(`app-${name}`);
+  if(app){ app.classList.remove('hidden'); currentApp=name; }
+  updatePgBtn(name);
+}
+
+function closeApp() {
+  if(currentApp){
+    const app=document.getElementById(`app-${currentApp}`);
+    if(app) app.classList.add('hidden');
+    currentApp=null;
+  }
+  updatePgBtn('home');
+}
+
+function goHome() { closeApp(); showScreen('home'); }
+
+function updatePgBtn(name) {
+  document.querySelectorAll('.pg-btn').forEach(b=>b.classList.remove('active-pg'));
+  const btns = document.querySelectorAll('.pg-btn');
+  btns.forEach(b=>{ if(b.textContent.toLowerCase().includes(name.toLowerCase())) b.classList.add('active-pg'); });
+}
+
+// ── Tab switching ─────────────────────────────────────────────
+function switchTab(appId, paneId, btn) {
+  const app = document.getElementById(`app-${appId}`);
+  if(!app) return;
+  app.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));
+  app.querySelectorAll('.tab-pane').forEach(p=>p.classList.remove('on'));
+  if(btn) btn.classList.add('on');
+  const pane=document.getElementById(paneId);
+  if(pane) pane.classList.add('on');
+}
+
+// ── Lock ──────────────────────────────────────────────────────
+function unlockPhone() {
+  const fp=document.createElement('div');
+  fp.style.cssText='position:absolute;inset:0;background:rgba(0,0,0,.7);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;z-index:200';
+  fp.innerHTML=`<div style="width:80px;height:80px;border:3px solid #3a86ff;border-radius:50%;animation:fpScan 1.5s ease-in-out 2;display:flex;align-items:center;justify-content:center;font-size:32px">👆</div><div style="color:#3a86ff;font-size:14px">Skanowanie…</div>`;
+  document.getElementById('scr-lock').appendChild(fp);
+  setTimeout(()=>{ fp.remove(); showScreen('home'); island('🔓 Odblokowany',false); },1600);
+}
+
+// ── Dynamic Island ────────────────────────────────────────────
+let islandTimeout;
+function island(text, persist=false) {
+  const el=document.getElementById('island');
+  const txt=document.getElementById('island-txt');
+  el.classList.add('expand');
+  txt.textContent=text;
+  clearTimeout(islandTimeout);
+  if(!persist) islandTimeout=setTimeout(()=>{ el.classList.remove('expand'); txt.textContent=''; },4000);
+}
+
+// ── Toast ─────────────────────────────────────────────────────
+const icons={s:'✅',e:'❌',w:'⚠️',m:'💬',i:'ℹ️'};
+function toast(msg, type='i', title='') {
+  const c=document.getElementById('toasts');
+  const el=document.createElement('div');
+  el.className=`toast ${type}`;
+  el.innerHTML=`<span class="t-ico">${icons[type]||'ℹ️'}</span><div class="t-body">${title?`<div class="t-ttl">${title}</div>`:''}${msg?`<div class="t-msg">${msg}</div>`:''}</div>`;
+  c.prepend(el);
+  el.addEventListener('click',()=>dismiss(el));
+  setTimeout(()=>dismiss(el),4500);
+  while(c.children.length>3) dismiss(c.lastChild);
+}
+function dismiss(el) {
+  if(!el.parentNode) return;
+  el.style.animation='tout .25s forwards';
+  setTimeout(()=>el.remove(),260);
+}
+
+// ── Dialer ────────────────────────────────────────────────────
+let dialBuf='';
+function dial(c){if(dialBuf.length<15){dialBuf+=c;document.getElementById('dial-num').textContent=dialBuf;}}
+function dialBack(){dialBuf=dialBuf.slice(0,-1);document.getElementById('dial-num').textContent=dialBuf;}
+function makeCall(){
+  if(!dialBuf){toast('Wpisz numer','w');return;}
+  island(`📞 Dzwonię do ${dialBuf}`,true);
+  toast('Łączenie…','s',dialBuf);
+  setTimeout(()=>{ island(`🟢 Rozmowa z ${dialBuf}`,true); toast('Połączono','s'); },2000);
+}
+
+// ── Incoming call ─────────────────────────────────────────────
+function triggerCall(){
+  const ov=document.getElementById('overlay-call');
+  ov.classList.add('show');
+  island('📞 Marek K.',true);
+}
+function declineCall(){
+  document.getElementById('overlay-call').classList.remove('show');
+  island('📵 Odrzucono');
+  toast('Połączenie odrzucone','e','Marek K.');
+}
+function answerCall(){
+  document.getElementById('overlay-call').classList.remove('show');
+  island('🟢 Rozmowa · 00:00',true);
+  toast('Połączono','s','Marek K.');
+  let sec=0;
+  const t=setInterval(()=>{
+    sec++;
+    const m=String(Math.floor(sec/60)).padStart(2,'0');
+    const s=String(sec%60).padStart(2,'0');
+    document.getElementById('island-txt').textContent=`🟢 Rozmowa · ${m}:${s}`;
+  },1000);
+  setTimeout(()=>{clearInterval(t);island('📵 Zakończono');},15000);
+}
+
+// ── Like post ─────────────────────────────────────────────────
+function likePost(btn){
+  btn.classList.toggle('liked');
+  const n=btn.querySelector('.pa-like-count');
+  n.textContent=btn.classList.contains('liked')?parseInt(n.textContent)+1:parseInt(n.textContent)-1;
+}
+
+// ── Dark web chat ─────────────────────────────────────────────
+function dwSend(){
+  const inp=document.getElementById('dw-msg-in');
+  const msg=inp.value.trim();
+  if(!msg)return;
+  const chat=document.querySelector('#dw-cht > div');
+  const div=document.createElement('div');
+  div.className='dw-chat-msg';
+  div.innerHTML=`<span class="dw-from">ja: </span><span class="dw-txt">${msg}</span>`;
+  chat.appendChild(div);
+  chat.scrollTop=chat.scrollHeight;
+  inp.value='';
+}
+
+// ── IMEI Minigame ─────────────────────────────────────────────
+let mgSolution, mgBuf, mgTimer;
+function startIMEIMinigame(){
+  const mg=document.getElementById('imei-mg');
+  mg.style.display='block';
+  mgSolution=Array.from({length:6},()=>Math.floor(Math.random()*10)).join('');
+  mgBuf='';
+  updateIMEIDisplay();
+  buildPad();
+  const bar=document.getElementById('imei-bar');
+  let elapsed=0;
+  clearInterval(mgTimer);
+  mgTimer=setInterval(()=>{
+    elapsed++;
+    const pct=(1-elapsed/30)*100;
+    bar.style.width=`${pct}%`;
+    if(pct<30) bar.style.background='#e74c3c';
+    if(elapsed>=30){clearInterval(mgTimer);finishMG(false);}
+  },1000);
+  toast('Wpisz 6-cyfrowy kod szyfrujący!','w','IMEI Clone');
+}
+function buildPad(){
+  const pad=document.getElementById('imei-pad');
+  pad.innerHTML='';
+  [1,2,3,4,5,6,7,8,9,'DEL',0,'OK'].forEach(k=>{
+    const b=document.createElement('button');
+    b.textContent=k;
+    b.style.cssText='background:#111;border:1px solid #444;border-radius:6px;color:#39ff14;padding:10px;cursor:pointer;font-family:monospace;font-size:14px';
+    b.addEventListener('click',()=>mgKey(k));
+    pad.appendChild(b);
+  });
+}
+function mgKey(k){
+  if(k==='DEL'){ mgBuf=mgBuf.slice(0,-1); }
+  else if(k==='OK'){ clearInterval(mgTimer); finishMG(mgBuf===mgSolution); return; }
+  else if(mgBuf.length<6){ mgBuf+=k; if(mgBuf.length===6){ clearInterval(mgTimer); finishMG(mgBuf===mgSolution); return; } }
+  updateIMEIDisplay();
+}
+function updateIMEIDisplay(){
+  document.getElementById('imei-display').textContent=mgBuf.padEnd(6,'_').split('').join(' ');
+}
+function finishMG(ok){
+  document.getElementById('imei-mg').style.display='none';
+  if(ok){ toast('IMEI sklonowany! Nowy: 847263910482710','s','Sukces'); island('✅ IMEI Czysty'); }
+  else   { toast('Niepowodzenie. Spróbuj ponownie.','e','IMEI Clone'); }
+}
+
+// ── MDT ───────────────────────────────────────────────────────
+function mdtSearch(){
+  const r=document.getElementById('mdt-result');
+  r.style.display='block';
+  r.style.animation='tin .3s cubic-bezier(.22,1,.36,1)';
+  toast('Znaleziono w bazie danych','w','MDT');
+  island('🚨 IMEI OFLAGOWANY');
+}
+
+// ── Contacts filter ───────────────────────────────────────────
+function filterContacts(q){
+  document.querySelectorAll('#cnt-list .cnt-item').forEach(li=>{
+    const name=li.querySelector('.cnt-name').textContent.toLowerCase();
+    const num =li.querySelector('.cnt-num').textContent;
+    li.style.display=(name.includes(q.toLowerCase())||num.includes(q))?'':'none';
+  });
+}
+
+// ── Music ─────────────────────────────────────────────────────
+let playing=false,progVal=35,progInt;
+const tracks=['Los Santos Radio','Night Drive','Gangsta Paradise','Welcome to the City'];
+const artists=['LS FM','Neon Drift','Coolio','RP Beats'];
+let curTrack=0;
+function musicToggle(){
+  playing=!playing;
+  document.getElementById('mc-play').textContent=playing?'⏸':'▶';
+  document.getElementById('music-art').classList.toggle('playing',playing);
+  if(playing){
+    progInt=setInterval(()=>{progVal=Math.min(100,progVal+0.3);document.getElementById('prog').style.width=progVal+'%';if(progVal>=100){progVal=0;}},200);
+    island(`🎵 ${tracks[curTrack]}`,true);
+  } else {
+    clearInterval(progInt);
+    island('⏸ Wstrzymano');
+  }
+}
+function musicPlay(i,li){
+  curTrack=i;
+  document.querySelectorAll('.pl-item').forEach((el,idx)=>{
+    el.classList.toggle('playing',idx===i);
+    el.querySelector('.pl-num').textContent=idx===i?'♪':idx+1;
+  });
+  document.getElementById('music-title').textContent=tracks[i];
+  document.getElementById('music-artist').textContent=artists[i];
+  if(!playing)musicToggle();
+  else island(`🎵 ${tracks[i]}`,true);
+}
+function musicPrev(){if(curTrack>0)musicPlay(curTrack-1,null);}
+function musicNext(){if(curTrack<tracks.length-1)musicPlay(curTrack+1,null);}
+
+// ── Crypto live ticks ─────────────────────────────────────────
+const basePrices={btc:29840,eth:1995,xmr:148,apc:487};
+function cryptoTick(){
+  ['btc','eth','xmr','apc'].forEach(c=>{
+    const el=document.getElementById(`${c}-p`);
+    const chg=document.getElementById(`${c}-c`);
+    if(!el||!chg)return;
+    const cur=parseFloat(el.textContent.replace(/[$,]/g,''))||basePrices[c];
+    const delta=cur*(Math.random()*.04-.02);
+    const next=Math.max(1,cur+delta);
+    const pct=((next-basePrices[c])/basePrices[c]*100).toFixed(2);
+    el.textContent=`$${next.toLocaleString('en',{maximumFractionDigits:0})}`;
+    const up=pct>=0;
+    chg.textContent=`${up?'▲':'▼'} ${up?'+':''}${pct}%`;
+    chg.className=`cr-change-sm ${up?'cr-up':'cr-dn'}`;
+  });
+}
+setInterval(cryptoTick,3000);
+
+// ── Theme switch ──────────────────────────────────────────────
+function changeTheme(v){
+  if(v==='light'){
+    document.getElementById('phone').style.background='#f2f2f7';
+    document.querySelectorAll('.app-screen').forEach(s=>s.style.background='#f2f2f7');
+  } else {
+    document.getElementById('phone').style.background='';
+    document.querySelectorAll('.app-screen').forEach(s=>s.style.background='');
+  }
+}
+
+// ── Airplane toggle ───────────────────────────────────────────
+function toggleAirplane(on){
+  document.querySelector('.signal').textContent=on?'✈':'▌▌▌';
+  document.querySelector('.signal').style.opacity=on?.3:1;
+  toast(on?'Tryb samolotowy włączony':'Tryb samolotowy wyłączony',on?'w':'s');
+  island(on?'✈️ Tryb samolotowy':'📶 Sieć przywrócona');
+}
+
+// ── Break phone ───────────────────────────────────────────────
+function triggerCrack(){
+  const c=document.getElementById('cracked');
+  c.style.display='block';
+  c.style.background=`
+    linear-gradient(135deg,transparent 48%,rgba(255,255,255,.25) 49%,rgba(255,255,255,.25) 51%,transparent 52%) center/100% 100%,
+    linear-gradient(78deg,transparent 38%,rgba(255,255,255,.2) 39%,rgba(255,255,255,.2) 41%,transparent 42%) 30% 40%/60% 80%,
+    linear-gradient(200deg,transparent 55%,rgba(255,255,255,.15) 56%,rgba(255,255,255,.15) 58%,transparent 59%) 70% 20%/50% 60%`;
+  c.style.opacity='.45';
+  c.style.pointerEvents='none';
+  toast('Telefon jest uszkodzony! Napraw ekran.','e','Pęknięty ekran');
+  island('💥 Telefon uszkodzony');
+  document.getElementById('phone').style.boxShadow='0 0 0 10px #101010,0 0 0 11px rgba(255,255,255,.06),0 40px 80px rgba(0,0,0,.8),0 0 120px rgba(231,76,60,.2)';
+}
+
+// ── Battery drain ─────────────────────────────────────────────
+let bat=82;
+setInterval(()=>{
+  bat=Math.max(0,bat-0.1);
+  const fill=document.getElementById('bat-fill');
+  fill.style.width=`${bat}%`;
+  fill.style.background=bat<=5?'#e74c3c':bat<=15?'#f39c12':'#30d158';
+},5000);
+
+// ── CSS animation helper ──────────────────────────────────────
+const style=document.createElement('style');
+style.textContent='@keyframes fpScan{0%{transform:scale(.8);opacity:1}50%{transform:scale(1.2);opacity:.5}100%{transform:scale(.8);opacity:1}}@keyframes tin{from{transform:translateY(-16px);opacity:0}to{transform:none;opacity:1}}';
+document.head.appendChild(style);
+
+// Init
+showScreen('lock');
+</script>
+</body>
+</html>
